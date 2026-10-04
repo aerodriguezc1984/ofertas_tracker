@@ -1,7 +1,32 @@
 # Rastreador de ofertas — Etapa 1: el esqueleto que camina
 
 Fecha: 2026-10-04
-Estado: aprobado el diseño en conversación; pendiente de revisión de este documento.
+Estado: aprobado. Enmendado el mismo día tras sondear las tiendas.
+
+## Enmienda del 2026-10-04
+
+Este documento se escribió dando por supuestas dos cosas que la sonda desmintió:
+
+1. **Mercado Libre no es accesible.** Su API responde 403
+   `PA_UNAUTHORIZED_RESULT_FROM_POLICIES` a toda petición anónima, y su web devuelve una
+   página puente sin contenido a un cliente HTTP. Sin credenciales OAuth o sin navegador no
+   hay lectura posible, así que **deja de ser la fuente de la Etapa 1**.
+2. **VTEX no es la plataforma común del retail chileno.** Paris y Falabella corren sobre
+   Next.js y abc.cl (la fusión de La Polar y AbcDin) sobre Salesforce Commerce Cloud. El
+   adaptador VTEX habría cubierto mucho menos de lo previsto.
+
+Lo que sí se verificó, con una petición normal y sin truco alguno: **Paris sirve su ficha
+de producto con JSON-LD legible** (nombre, SKU y precio), y su página de búsqueda
+`paris.cl/search?q=` devuelve enlaces a fichas. Falabella y abc.cl también publican
+JSON-LD, lo que abarata la Etapa 2.
+
+En consecuencia, **la fuente de la Etapa 1 es Paris por raspado**, y el **descubrimiento
+por palabra clave entra en la Etapa 1** en vez de esperar a la Etapa 3: la búsqueda es una
+página más que raspar, y el usuario la pidió expresamente. Lo que sigue en la Etapa 3 es el
+emparejado del mismo producto entre tiendas distintas, que es el problema difícil.
+
+Todo lo demás del documento —interfaz de fuente, esquema, histórico de variaciones,
+arranque en frío, control de frecuencia, criterios de éxito— se mantiene intacto.
 
 ## Por qué existe este documento
 
@@ -20,7 +45,8 @@ de punta a punta, hasta que suene el teléfono. Es la Etapa 1 de cuatro.
 ### Dentro
 
 - Lista de deseos: el usuario declara los productos concretos que quiere vigilar.
-- Una fuente: Mercado Libre Chile.
+- Descubrimiento por palabra clave en esa misma tienda.
+- Una fuente: Paris, leída raspando el JSON-LD de sus fichas.
 - Histórico de precios en SQLite, registrando **variaciones**, no pasadas.
 - Reglas por producto: precio máximo, descuento mínimo contra el mínimo histórico,
   exclusión de precios que exigen tarjeta de la casa.
@@ -28,9 +54,10 @@ de punta a punta, hasta que suene el teléfono. Es la Etapa 1 de cuatro.
 
 ### Fuera (etapas posteriores)
 
-- Etapa 2 — anchura: adaptador de catálogo VTEX, lector genérico de JSON-LD, SoloTodo.
-- Etapa 3 — descubrimiento: búsqueda por palabra clave y emparejado de productos entre
-  tiendas (EAN cuando exista, `rapidfuzz` sobre el título cuando no).
+- Etapa 2 — anchura: Falabella y abc.cl con el mismo normalizador, SoloTodo, y la matriz
+  de tres precios (que no viene en el JSON-LD y exige leer los datos de Next.js).
+- Etapa 3 — emparejado de productos entre tiendas. Verificado que Paris no publica `gtin`,
+  así que habrá que apoyarse en el parecido entre títulos (`rapidfuzz`) más que en el EAN.
 - Etapa 4 — operación: reporte Excel, rotación de logs, Programador de tareas de Windows.
 
 El diseño de la Etapa 1 se juzga, en parte, por lo barato que haga la Etapa 2. De ahí que
@@ -52,9 +79,10 @@ es barato; mantener evasión en quince, no.
 
 El plan proponía un módulo Python por tienda. No escala a «todo el retail chileno»: quince
 tiendas serían quince archivos que se rompen por separado. En su lugar se escribe un motor
-por **plataforma técnica** y las tiendas se declaran en YAML. Hoy solo existe el motor de
-Mercado Libre; la interfaz está diseñada para que VTEX, el lector genérico de JSON-LD y
-SoloTodo entren después sin tocar el núcleo.
+por **plataforma técnica** y las tiendas se declaran en YAML. El motor de la Etapa 1 es el
+**genérico de JSON-LD**, que no es propio de Paris: la misma pieza lee Falabella y abc.cl
+en la Etapa 2. Lo único específico de Paris es la forma de su URL de búsqueda y la de sus
+enlaces a ficha.
 
 ### El dinero es entero
 
@@ -100,7 +128,8 @@ ofertas_tracker/
 │   │   └── operaciones.py    # alta de producto, registro de cambio, consultas
 │   ├── fuentes/
 │   │   ├── base.py           # Captura, Referencia, protocolo Fuente
-│   │   └── mercadolibre.py
+│   │   ├── transporte.py     # HTTP real: reintentos, ritmo lento
+│   │   └── paris.py          # URL de búsqueda y forma de enlace de Paris
 │   ├── nucleo/
 │   │   ├── normalizador.py   # respuesta cruda -> Captura
 │   │   └── evaluador.py      # reglas y descuento contra histórico
@@ -149,10 +178,12 @@ class Referencia:
 class Fuente(Protocol):
     nombre: str
     def obtener(self, referencias: list[Referencia]) -> list[Captura]: ...
+    def buscar(self, termino: str, limite: int) -> list[Captura]: ...
 ```
 
-`buscar(termino, limite)` se añadirá al protocolo en la Etapa 3. No se declara ahora: un
-método que nadie implementa es deuda, no previsión.
+`buscar` devuelve capturas igual que `obtener`: en Paris la búsqueda da URLs de ficha y el
+precio sale de cada una, así que cuesta una petición más las de los resultados. De ahí que
+el límite por búsqueda sea configurable y conservador.
 
 El resto del sistema no sabe de qué tienda viene un dato. Una fuente que no pueda
 determinar `precio_internet` no devuelve la captura: devolver un cero sería inventarse una
@@ -234,12 +265,20 @@ alertas:
 `config/lista_deseos.yaml`:
 
 ```yaml
-- nombre: Notebook Lenovo ThinkPad E14
-  url: https://articulo.mercadolibre.cl/MLC-XXXXXXXXX-...
-  reglas:
-    precio_maximo: 500000
-    descuento_minimo_pct: 15
-    permitir_precio_tarjeta: false
+vigilados:
+  - nombre: Home Panel Mónaco TV 55
+    tienda: paris
+    url: https://www.paris.cl/home-panel-monaco-tv-55-1-6-castano-off-white-MK2GCAHDUR.html
+    reglas:
+      precio_maximo: 200000
+      descuento_minimo_pct: 15
+      permitir_precio_tarjeta: false
+
+busquedas:
+  - termino: notebook 16gb
+    tienda: paris
+    reglas:
+      precio_maximo: 400000
 ```
 
 `.env`, excluido por `.gitignore`, con `.env.example` versionado como plantilla:
@@ -304,9 +343,10 @@ Un precio que sube, o que se queda igual, no vuelve a avisar.
 
 ## Pruebas
 
-`pytest`. **Ninguna prueba toca la red.** Las respuestas reales de Mercado Libre se graban
-una vez en `tests/fixtures/*.json` y las pruebas trabajan sobre ellas, de modo que la suite
-corre sin conexión y no depende de que un producto siga en stock.
+`pytest`. **Ninguna prueba toca la red.** Las fuentes reciben su transporte por inyección y
+las pruebas pasan uno falso. Las *fixtures* son recortes: el bloque JSON-LD real de una
+ficha de Paris y una página de búsqueda con su misma forma de enlace. Las páginas enteras
+pesan de 2 a 4 MB y no tiene sentido versionarlas.
 
 Cobertura mínima para dar la etapa por cerrada:
 
@@ -334,19 +374,19 @@ La Etapa 1 está terminada cuando:
 2. `python runner.py` sobre una lista de deseos real guarda los productos la primera vez,
    y una segunda ejecución inmediata **no** añade filas al histórico ni envía alertas.
 3. Una bajada de precio real o simulada produce exactamente una alerta.
-4. Si Mercado Libre devuelve error, el proceso termina con código 0, deja un `WARNING` en
-   el log y no corrompe la base.
+4. Si Paris devuelve error, el proceso termina con código 0, deja un `WARNING` en el log y
+   no corrompe la base.
 
 ## Riesgos conocidos
 
-**1. El acceso a la API de Mercado Libre puede exigir autenticación.** El plan daba por
-pública la ruta `api.mercadolibre.com/sites/MLC/search`. Mercado Libre ha ido cerrando el
-acceso anónimo a sus endpoints, así que no se puede asumir que responda sin credenciales.
-La primera tarea de la implementación es una **sonda** que lo compruebe. Si exige OAuth,
-registras una aplicación gratuita en el portal de desarrolladores y sus credenciales van a
-`.env`; si eso tampoco encaja, se adelanta el lector genérico de JSON-LD de la Etapa 2, que
-lee la propia ficha del producto. El diseño no depende de cuál de las tres salga: las tres
-cumplen la misma interfaz `Fuente`.
+**1. El raspado se rompe cuando la tienda cambia su página.** Es el riesgo estructural de
+leer HTML en vez de una API: el día que Paris cambie la forma de sus enlaces o deje de
+publicar JSON-LD, la fuente dejará de devolver capturas. Se mitiga de dos maneras: el
+normalizador es genérico, de modo que un cambio de maquetación no lo afecta mientras siga
+habiendo JSON-LD; y hay una sonda manual (`herramientas/sonda_paris.py`) que comprueba
+contra la tienda real si las *fixtures* siguen pareciéndose a la realidad. Cuando la sonda
+falle, **el fallo está en la página, no en las pruebas**: no se tocan las pruebas para que
+pasen.
 
 **2. Una lista de deseos larga multiplica las peticiones.** Con pausas de 2 a 5 segundos,
 cien productos son entre tres y ocho minutos por pasada. Aceptable para uso personal; si
@@ -358,7 +398,12 @@ marcan qué medio de pago exige su precio destacado. Cuando no se pueda determin
 conservadora, y como mucho hace que una oferta pase desapercibida en vez de avisar de una
 que no puedes pagar.
 
+**4. El JSON-LD de Paris no trae todo lo que querríamos.** Verificado: no publica `gtin`
+(sin código de barras, el emparejado de la Etapa 3 dependerá del parecido entre títulos),
+no declara `availability` (si la tienda no dice nada se asume disponible, porque lo
+contrario silenciaría todas las alertas) y trae **un solo precio**, de modo que la matriz
+de tres precios con el de tarjeta queda para la Etapa 2.
+
 ## Siguiente paso
 
-Plan de implementación detallado, con las tareas en orden y la sonda de Mercado Libre como
-primera de todas.
+Plan de implementación en `docs/plans/2026-10-04-etapa-1-esqueleto.md`.
