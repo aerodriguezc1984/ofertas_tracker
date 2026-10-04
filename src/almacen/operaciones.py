@@ -92,26 +92,26 @@ def minimo_historico(
     No basta con mirar las filas dentro de la ventana: como solo se guardan
     variaciones, un precio fijado antes del inicio de la ventana y nunca
     cambiado no tiene ninguna fila dentro, y aun así es el precio vigente. Por
-    eso, cuando la ventana no tiene ninguna fila propia, se recurre a la
-    última fila anterior al corte (el precio que estaba vigente al abrirse).
-    Si la ventana ya tiene alguna fila, esa fila previa no cuenta: ya quedó
-    sustituida por lo que pasó dentro de la ventana.
+    eso se une la última fila anterior al corte.
     """
     ventana = f"-{int(ventana_dias)} days"
     fila = con.execute(
         """
-        SELECT COALESCE(
-            (SELECT MIN(precio_internet)
-               FROM historico_precios
-              WHERE producto_id = :pid
-                AND capturado_el >= datetime('now', :ventana)),
-            (SELECT precio_internet
-               FROM historico_precios
-              WHERE producto_id = :pid
-                AND capturado_el < datetime('now', :ventana)
-              ORDER BY capturado_el DESC, id DESC
-              LIMIT 1)
-        ) AS minimo
+        SELECT MIN(p) AS minimo FROM (
+            SELECT precio_internet AS p
+              FROM historico_precios
+             WHERE producto_id = :pid
+               AND capturado_el >= datetime('now', :ventana)
+            UNION ALL
+            SELECT p FROM (
+                SELECT precio_internet AS p
+                  FROM historico_precios
+                 WHERE producto_id = :pid
+                   AND capturado_el < datetime('now', :ventana)
+                 ORDER BY capturado_el DESC, id DESC
+                 LIMIT 1
+            )
+        )
         """,
         {"pid": producto_id, "ventana": ventana},
     ).fetchone()

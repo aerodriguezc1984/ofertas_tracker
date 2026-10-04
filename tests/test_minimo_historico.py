@@ -41,12 +41,17 @@ def test_toma_el_menor_dentro_de_la_ventana(tmp_path):
     assert minimo_historico(con, pid, 90) == 89990
 
 
-def test_ignora_lo_anterior_a_la_ventana_si_hay_algo_dentro(tmp_path):
+def test_cuenta_el_precio_vigente_aunque_la_ventana_tenga_filas(tmp_path):
+    """El precio viejo siguió vigente dentro de la ventana, así que cuenta.
+
+    Entre el día 200 y el día 30 el precio fue 50000, y los días 90 a 30 caen
+    dentro de la ventana: 50000 es de verdad el mínimo vigente en esos 90 días.
+    """
     con = abrir(tmp_path / "p.db")
     pid = producto(con)
-    fila(con, pid, 50000, 200)   # una ganga vieja que ya no cuenta
+    fila(con, pid, 50000, 200)
     fila(con, pid, 100000, 30)
-    assert minimo_historico(con, pid, 90) == 100000
+    assert minimo_historico(con, pid, 90) == 50000
 
 
 def test_usa_el_precio_vigente_al_abrirse_la_ventana(tmp_path):
