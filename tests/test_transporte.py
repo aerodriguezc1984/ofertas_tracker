@@ -58,4 +58,4 @@ def test_la_espera_crece_entre_intentos():
     traer = crear_transporte(sesion=sesion, reintentos=3, pausa=None, dormir=esperas.append)
     traer("https://www.paris.cl/x.html")
     assert len(esperas) == 2
-    assert esperas == sorted(esperas)
+    assert esperas[1] > esperas[0]
