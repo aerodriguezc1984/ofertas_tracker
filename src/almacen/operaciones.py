@@ -82,3 +82,50 @@ def registrar_si_cambio(
         ),
     )
     return True
+
+
+def minimo_historico(
+    con: sqlite3.Connection, producto_id: int, ventana_dias: int
+) -> int | None:
+    """El precio más bajo vigente en los últimos `ventana_dias` días.
+
+    No basta con mirar las filas dentro de la ventana: como solo se guardan
+    variaciones, un precio fijado antes del inicio de la ventana y nunca
+    cambiado no tiene ninguna fila dentro, y aun así es el precio vigente. Por
+    eso, cuando la ventana no tiene ninguna fila propia, se recurre a la
+    última fila anterior al corte (el precio que estaba vigente al abrirse).
+    Si la ventana ya tiene alguna fila, esa fila previa no cuenta: ya quedó
+    sustituida por lo que pasó dentro de la ventana.
+    """
+    ventana = f"-{int(ventana_dias)} days"
+    fila = con.execute(
+        """
+        SELECT COALESCE(
+            (SELECT MIN(precio_internet)
+               FROM historico_precios
+              WHERE producto_id = :pid
+                AND capturado_el >= datetime('now', :ventana)),
+            (SELECT precio_internet
+               FROM historico_precios
+              WHERE producto_id = :pid
+                AND capturado_el < datetime('now', :ventana)
+              ORDER BY capturado_el DESC, id DESC
+              LIMIT 1)
+        ) AS minimo
+        """,
+        {"pid": producto_id, "ventana": ventana},
+    ).fetchone()
+    return fila["minimo"]
+
+
+def dias_de_historico(con: sqlite3.Connection, producto_id: int) -> float:
+    """Cuántos días hace que se vigila este producto. Cero si no hay histórico."""
+    fila = con.execute(
+        """
+        SELECT (julianday('now') - julianday(MIN(capturado_el))) AS dias
+          FROM historico_precios
+         WHERE producto_id = ?
+        """,
+        (producto_id,),
+    ).fetchone()
+    return float(fila["dias"]) if fila["dias"] is not None else 0.0
