@@ -56,6 +56,17 @@ de punta a punta, hasta que suene el teléfono. Es la Etapa 1 de cuatro.
 
 - Etapa 2 — anchura: Falabella y abc.cl con el mismo normalizador, SoloTodo, y la matriz
   de tres precios (que no viene en el JSON-LD y exige leer los datos de Next.js).
+  **Dos deudas que la revisión final de la Etapa 1 dejó anotadas y que la Etapa 2 debe pagar
+  antes de escribir la segunda tienda, no después de la tercera:**
+  1. De las ~60 líneas de `fuentes/paris.py`, solo tres son propias de Paris: `BASE`, el
+     patrón de enlace y la forma de la URL de búsqueda. El resto —el bucle de `obtener`, el
+     manejo de `TiendaBloqueada`, el deduplicado, el corte por `limite`— se copiaría literal
+     en cada tienda nueva y divergiría por separado. Extraer una `FuenteJsonLd` base
+     parametrizada deja cada tienda en unas seis líneas, y es mucho más barato con una
+     implementación que con tres.
+  2. `registrar_si_cambio` compara `precio_tarjeta` pero no `tarjeta`: si cambia la tarjeta
+     asociada y no su precio, no se anota fila. Hoy es latente porque Paris no publica
+     ninguno de los dos; con la matriz de tres precios deja de serlo.
 - Etapa 3 — emparejado de productos entre tiendas. Verificado que Paris no publica `gtin`,
   así que habrá que apoyarse en el parecido entre títulos (`rapidfuzz`) más que en el EAN.
 - Etapa 4 — operación: reporte Excel, rotación de logs, Programador de tareas de Windows.
@@ -335,8 +346,10 @@ Un precio que sube, o que se queda igual, no vuelve a avisar.
   demás**. Hay una prueba que lo verifica.
 - Respuesta con forma inesperada: la captura se descarta con `WARNING` que nombra el campo
   ausente. Nunca se guarda un precio inventado.
-- `sqlite3.OperationalError` por base bloqueada: WAL lo hace improbable; aun así, la
-  escritura se reintenta una vez antes de propagar.
+- `sqlite3.OperationalError` por base bloqueada: **no se reintenta.** El requisito original
+  pedía un reintento, pero con WAL y un único proceso escritor no hay escenario que lo
+  provoque, y un reintento que nunca se ejecuta es código que nadie puede probar ni mantener.
+  Vuelve a la mesa en la Etapa 4, si el Programador de tareas llegara a solapar dos pasadas.
 - El notificador de Telegram que falla no debe perder el dato: la alerta ya está en el
   histórico y el fallo se registra; no se marca como enviada, así que el siguiente ciclo
   lo reintenta.

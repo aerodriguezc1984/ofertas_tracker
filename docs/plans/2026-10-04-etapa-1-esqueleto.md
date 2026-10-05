@@ -521,12 +521,17 @@ def test_toma_el_menor_dentro_de_la_ventana(tmp_path):
     assert minimo_historico(con, pid, 90) == 89990
 
 
-def test_ignora_lo_anterior_a_la_ventana_si_hay_algo_dentro(tmp_path):
+def test_cuenta_el_precio_vigente_aunque_la_ventana_tenga_filas(tmp_path):
+    """El precio viejo siguió vigente dentro de la ventana, así que cuenta.
+
+    Entre el día 200 y el día 30 el precio fue 50000, y los días 90 a 30 caen
+    dentro de la ventana: 50000 es de verdad el mínimo vigente en esos 90 días.
+    """
     con = abrir(tmp_path / "p.db")
     pid = producto(con)
-    fila(con, pid, 50000, 200)   # una ganga vieja que ya no cuenta
+    fila(con, pid, 50000, 200)
     fila(con, pid, 100000, 30)
-    assert minimo_historico(con, pid, 90) == 100000
+    assert minimo_historico(con, pid, 90) == 50000
 
 
 def test_usa_el_precio_vigente_al_abrirse_la_ventana(tmp_path):
@@ -952,7 +957,9 @@ def test_la_espera_crece_entre_intentos():
     traer = crear_transporte(sesion=sesion, reintentos=3, pausa=None, dormir=esperas.append)
     traer("https://www.paris.cl/x.html")
     assert len(esperas) == 2
-    assert esperas == sorted(esperas)
+    # Crecimiento estricto: `esperas == sorted(esperas)` también pasaría con una
+    # espera constante, y entonces la prueba no mediría lo que dice su nombre.
+    assert esperas[1] > esperas[0]
 ```
 
 - [ ] **Paso 2: Ejecutar la prueba y comprobar que falla**
@@ -1788,15 +1795,28 @@ class NotificadorTelegram:
 
     def enviar(self, captura: Captura, veredicto: Veredicto) -> None:
         url = f"https://api.telegram.org/bot{self._token}/sendMessage"
-        respuesta = self._sesion.post(
-            url,
-            json={
-                "chat_id": self._chat_id,
-                "text": redactar(captura, veredicto),
-                "disable_web_page_preview": False,
-            },
-            timeout=30,
-        )
+        cuerpo = {
+            "chat_id": self._chat_id,
+            "text": redactar(captura, veredicto),
+            "disable_web_page_preview": False,
+        }
+
+        # El `try` contiene exactamente una sentencia: la llamada de red. Si
+        # abarcara también la construcción del cuerpo, un fallo al redactar se
+        # relanzaría disfrazado de problema de conexión.
+        tipo_de_fallo = None
+        try:
+            respuesta = self._sesion.post(url, json=cuerpo, timeout=30)
+        except Exception as error:
+            tipo_de_fallo = type(error).__name__
+        if tipo_de_fallo is not None:
+            # El texto de las excepciones de requests incluye la URL, y la URL
+            # lleva el token incrustado. Se relanza ya FUERA del bloque except,
+            # cuando Python no tiene ninguna excepción en curso que encadenar:
+            # así el error nuevo no lleva ni __cause__ ni __context__.
+            # `raise ... from None` no bastaría: limpia __cause__ pero deja
+            # __context__ apuntando a la excepción original, token incluido.
+            raise EnvioFallido(f"No se pudo contactar con Telegram ({tipo_de_fallo})")
         if respuesta.status_code != 200:
             # Sin la URL en el mensaje: lleva el token incrustado.
             raise EnvioFallido(f"Telegram respondió {respuesta.status_code}")
