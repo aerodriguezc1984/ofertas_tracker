@@ -129,3 +129,30 @@ def dias_de_historico(con: sqlite3.Connection, producto_id: int) -> float:
         (producto_id,),
     ).fetchone()
     return float(fila["dias"]) if fila["dias"] is not None else 0.0
+
+
+def ultima_alerta(con: sqlite3.Connection, producto_id: int, regla: str):
+    """La última alerta enviada para ese producto y esa regla, si la hubo."""
+    return con.execute(
+        """
+        SELECT precio_notificado,
+               (julianday('now') - julianday(enviado_el)) AS dias_desde
+          FROM registro_alertas
+         WHERE producto_id = ? AND regla = ?
+         ORDER BY enviado_el DESC, id DESC
+         LIMIT 1
+        """,
+        (producto_id, regla),
+    ).fetchone()
+
+
+def registrar_alerta(
+    con: sqlite3.Connection, producto_id: int, regla: str, precio: int
+) -> None:
+    con.execute(
+        """
+        INSERT INTO registro_alertas (producto_id, regla, precio_notificado)
+             VALUES (?, ?, ?)
+        """,
+        (producto_id, regla, precio),
+    )
