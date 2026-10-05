@@ -94,3 +94,25 @@ def test_telegram_no_filtra_el_token_cuando_falla_la_red():
     assert TOKEN not in repr(error.value)
     assert error.value.__cause__ is None
     assert error.value.__context__ is None or TOKEN not in str(error.value.__context__)
+
+
+def test_un_fallo_al_redactar_no_se_disfraza_de_fallo_de_red():
+    """Un error construyendo el mensaje no es un problema de conexión."""
+
+    class CapturaRota:
+        tienda = "paris"
+        titulo = "Notebook"
+        url = "https://www.paris.cl/n-S1.html"
+        precio_internet = 1000
+
+        @property
+        def precio_normal(self):
+            raise RuntimeError("fallo al redactar")
+
+    class SesionQueNoDebeUsarse:
+        def post(self, url, json=None, timeout=None):
+            raise AssertionError("no se debió llegar a la red")
+
+    notificador = NotificadorTelegram("T", "123", sesion=SesionQueNoDebeUsarse())
+    with pytest.raises(RuntimeError, match="fallo al redactar"):
+        notificador.enviar(CapturaRota(), VEREDICTO)

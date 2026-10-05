@@ -27,17 +27,15 @@ class NotificadorTelegram:
 
     def enviar(self, captura: Captura, veredicto: Veredicto) -> None:
         url = f"https://api.telegram.org/bot{self._token}/sendMessage"
+        cuerpo = {
+            "chat_id": self._chat_id,
+            "text": redactar(captura, veredicto),
+            "disable_web_page_preview": False,
+        }
+
         tipo_de_fallo = None
         try:
-            respuesta = self._sesion.post(
-                url,
-                json={
-                    "chat_id": self._chat_id,
-                    "text": redactar(captura, veredicto),
-                    "disable_web_page_preview": False,
-                },
-                timeout=30,
-            )
+            respuesta = self._sesion.post(url, json=cuerpo, timeout=30)
         except Exception as error:
             tipo_de_fallo = type(error).__name__
         if tipo_de_fallo is not None:
