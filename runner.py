@@ -1,0 +1,172 @@
+"""Orquesta un ciclo completo: capturar, guardar, evaluar, avisar."""
+
+import logging
+import os
+import sys
+from pathlib import Path
+
+import yaml
+from dotenv import load_dotenv
+
+# Bajo pytest, `src` entra por el pythonpath del pyproject.toml. Al ejecutar
+# `python runner.py` a secas no hay tal cosa, así que se añade aquí.
+sys.path.insert(0, str(Path(__file__).parent / "src"))
+
+from almacen.conexion import abrir                 # noqa: E402
+from almacen.operaciones import (                  # noqa: E402
+    alta_o_actualiza_producto,
+    dias_de_historico,
+    minimo_historico,
+    registrar_alerta,
+    registrar_si_cambio,
+)
+from avisos.archivo import NotificadorArchivo      # noqa: E402
+from avisos.telegram import NotificadorTelegram    # noqa: E402
+from fuentes.base import Referencia                # noqa: E402
+from fuentes.paris import Paris                    # noqa: E402
+from fuentes.transporte import crear_transporte    # noqa: E402
+from nucleo.evaluador import Reglas, evaluar       # noqa: E402
+from nucleo.frecuencia import debe_notificar       # noqa: E402
+
+registro = logging.getLogger("rastreador")
+
+RAIZ = Path(__file__).parent
+
+
+def cargar_config(ruta: Path | str) -> dict:
+    return yaml.safe_load(Path(ruta).read_text(encoding="utf-8"))
+
+
+def cargar_lista_deseos(ruta: Path | str) -> tuple[list[dict], list[dict]]:
+    """Devuelve (vigilados, busquedas) con las reglas ya convertidas."""
+    datos = yaml.safe_load(Path(ruta).read_text(encoding="utf-8")) or {}
+
+    vigilados = [
+        {
+            "tienda": entrada["tienda"],
+            "url": entrada["url"],
+            "reglas": Reglas(**(entrada.get("reglas") or {})),
+        }
+        for entrada in datos.get("vigilados") or []
+    ]
+    busquedas = [
+        {
+            "tienda": entrada["tienda"],
+            "termino": entrada["termino"],
+            "reglas": Reglas(**(entrada.get("reglas") or {})),
+        }
+        for entrada in datos.get("busquedas") or []
+    ]
+    return vigilados, busquedas
+
+
+def _procesar(con, capturas, reglas, notificador, config) -> int:
+    """Guarda las capturas, evalúa y avisa. Devuelve cuántas alertas mandó."""
+    ventana = config["historico"]["ventana_minimo_dias"]
+    dias_minimos = config["historico"]["dias_minimos_para_descuento"]
+    cooldown = config["alertas"]["cooldown_dias"]
+
+    enviadas = 0
+    for captura in capturas:
+        producto_id = alta_o_actualiza_producto(con, captura)
+
+        # El mínimo se consulta ANTES de insertar la captura de hoy: si no, el
+        # precio actual sería su propio mínimo y el descuento siempre cero.
+        minimo = minimo_historico(con, producto_id, ventana)
+        dias = dias_de_historico(con, producto_id)
+
+        registrar_si_cambio(con, producto_id, captura)
+
+        veredicto = evaluar(captura, reglas, minimo, dias, dias_minimos)
+        if veredicto is None:
+            continue
+        if not debe_notificar(con, producto_id, veredicto.regla, veredicto.precio, cooldown):
+            continue
+
+        try:
+            notificador.enviar(captura, veredicto)
+        except Exception as error:
+            # La captura ya está en el histórico, así que el dato no se pierde.
+            # No se registra la alerta: el próximo ciclo volverá a intentarlo.
+            registro.warning(
+                "no se pudo avisar de %s (%s); se reintentará en el próximo ciclo",
+                captura.url,
+                error,
+            )
+            continue
+
+        registrar_alerta(con, producto_id, veredicto.regla, veredicto.precio)
+        enviadas += 1
+
+    return enviadas
+
+
+def ejecutar_ciclo(con, fuentes, vigilados, busquedas, notificador, config) -> int:
+    """Un ciclo completo. Un fallo de una tienda nunca detiene a las demás."""
+    enviadas = 0
+
+    for vigilado in vigilados:
+        fuente = fuentes.get(vigilado["tienda"])
+        if fuente is None:
+            registro.warning("sin fuente para la tienda %r", vigilado["tienda"])
+            continue
+        try:
+            capturas = fuente.obtener(
+                [Referencia(tienda=vigilado["tienda"], url=vigilado["url"])]
+            )
+        except Exception as error:  # noqa: BLE001
+            registro.warning("fuente %s falló: %s", fuente.nombre, error)
+            continue
+        enviadas += _procesar(con, capturas, vigilado["reglas"], notificador, config)
+
+    limite = config.get("ejecucion", {}).get("limite_por_busqueda", 15)
+    for busqueda in busquedas:
+        fuente = fuentes.get(busqueda["tienda"])
+        if fuente is None:
+            registro.warning("sin fuente para la tienda %r", busqueda["tienda"])
+            continue
+        try:
+            capturas = fuente.buscar(busqueda["termino"], busqueda.get("limite", limite))
+        except Exception as error:  # noqa: BLE001
+            registro.warning("búsqueda en %s falló: %s", fuente.nombre, error)
+            continue
+        enviadas += _procesar(con, capturas, busqueda["reglas"], notificador, config)
+
+    return enviadas
+
+
+def construir_notificador(config):
+    if config["alertas"].get("canal", "archivo") == "telegram":
+        return NotificadorTelegram(
+            token=os.environ.get("TELEGRAM_BOT_TOKEN", ""),
+            chat_id=os.environ.get("TELEGRAM_CHAT_ID", ""),
+        )
+    return NotificadorArchivo(RAIZ / config["alertas"]["ruta_archivo"])
+
+
+def main() -> int:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    load_dotenv(RAIZ / ".env")
+
+    config = cargar_config(RAIZ / "config" / "config.yaml")
+    vigilados, busquedas = cargar_lista_deseos(RAIZ / "config" / "lista_deseos.yaml")
+
+    transporte = crear_transporte(
+        reintentos=config["ejecucion"]["reintentos"],
+        pausa=tuple(config["ejecucion"]["espera_entre_peticiones_seg"]),
+    )
+    fuentes = {"paris": Paris(transporte)}
+
+    con = abrir(RAIZ / "data" / "tracker.db")
+    enviadas = ejecutar_ciclo(
+        con, fuentes, vigilados, busquedas, construir_notificador(config), config
+    )
+    registro.info("ciclo terminado: %s alertas enviadas", enviadas)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

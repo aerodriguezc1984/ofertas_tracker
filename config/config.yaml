@@ -1,0 +1,11 @@
+ejecucion:
+  espera_entre_peticiones_seg: [2, 5]
+  reintentos: 3
+  limite_por_busqueda: 15
+historico:
+  ventana_minimo_dias: 90
+  dias_minimos_para_descuento: 7
+alertas:
+  canal: archivo          # archivo | telegram
+  cooldown_dias: 5
+  ruta_archivo: logs/alertas.jsonl
