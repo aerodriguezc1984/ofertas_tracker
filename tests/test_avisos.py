@@ -73,3 +73,24 @@ def test_telegram_no_filtra_el_token_en_el_error():
     with pytest.raises(EnvioFallido) as error:
         notificador.enviar(CAPTURA, VEREDICTO)
     assert "SECRETO-QUE-NO-DEBE-SALIR" not in str(error.value)
+
+
+def test_telegram_no_filtra_el_token_cuando_falla_la_red():
+    """Las excepciones de requests llevan la URL, y la URL lleva el token."""
+    TOKEN = "SECRETO-QUE-NO-DEBE-SALIR"
+
+    class SesionQueFalla:
+        def post(self, url, json=None, timeout=None):
+            raise ConnectionError(
+                f"HTTPSConnectionPool(host='api.telegram.org', port=443): "
+                f"Max retries exceeded with url: /bot{TOKEN}/sendMessage"
+            )
+
+    notificador = NotificadorTelegram(TOKEN, "123", sesion=SesionQueFalla())
+    with pytest.raises(EnvioFallido) as error:
+        notificador.enviar(CAPTURA, VEREDICTO)
+
+    assert TOKEN not in str(error.value)
+    assert TOKEN not in repr(error.value)
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None or TOKEN not in str(error.value.__context__)
