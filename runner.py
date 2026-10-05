@@ -49,12 +49,28 @@ def _reglas_de(entrada: dict, que: str) -> Reglas | None:
         return None
 
 
+def _entrada_valida(entrada, obligatorias: tuple[str, ...], donde: str) -> bool:
+    """Si a una entrada le falta lo imprescindible, se avisa y se salta."""
+    if not isinstance(entrada, dict):
+        registro.warning("se salta una entrada de %s que no es un mapa: %r", donde, entrada)
+        return False
+    faltan = [clave for clave in obligatorias if not entrada.get(clave)]
+    if faltan:
+        registro.warning(
+            "se salta una entrada de %s sin %s: %r", donde, ", ".join(faltan), entrada
+        )
+        return False
+    return True
+
+
 def cargar_lista_deseos(ruta: Path | str) -> tuple[list[dict], list[dict]]:
     """Devuelve (vigilados, busquedas) con las reglas ya convertidas."""
     datos = yaml.safe_load(Path(ruta).read_text(encoding="utf-8")) or {}
 
     vigilados = []
     for entrada in datos.get("vigilados") or []:
+        if not _entrada_valida(entrada, ("tienda", "url"), "vigilados"):
+            continue
         reglas = _reglas_de(entrada, entrada["url"])
         if reglas is None:
             continue
@@ -64,6 +80,8 @@ def cargar_lista_deseos(ruta: Path | str) -> tuple[list[dict], list[dict]]:
 
     busquedas = []
     for entrada in datos.get("busquedas") or []:
+        if not _entrada_valida(entrada, ("tienda", "termino"), "busquedas"):
+            continue
         reglas = _reglas_de(entrada, entrada["termino"])
         if reglas is None:
             continue

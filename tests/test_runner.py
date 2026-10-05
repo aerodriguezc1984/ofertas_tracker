@@ -165,6 +165,28 @@ def test_una_regla_desconocida_se_salta_sin_abortar(tmp_path):
     assert busquedas == []
 
 
+def test_una_entrada_sin_clave_obligatoria_se_salta_sin_abortar(tmp_path):
+    """Como la regla desconocida: a una entrada le falta lo imprescindible y se salta sola."""
+    ruta = tmp_path / "lista.yaml"
+    ruta.write_text(
+        "vigilados:\n"
+        "  - tienda: paris\n"
+        "    url: https://www.paris.cl/bueno-S1.html\n"
+        "    reglas:\n"
+        "      precio_maximo: 1000\n"
+        "  - tienda: paris\n"
+        "    reglas:\n"
+        "      precio_maximo: 1000\n",
+        encoding="utf-8",
+    )
+
+    vigilados, busquedas = cargar_lista_deseos(ruta)
+
+    assert len(vigilados) == 1
+    assert vigilados[0]["url"].endswith("bueno-S1.html")
+    assert busquedas == []
+
+
 def test_el_descuento_se_mide_contra_el_minimo_anterior_a_la_captura(tmp_path):
     """Si el mínimo se consultara tras guardar, hoy sería su propio mínimo.
 
