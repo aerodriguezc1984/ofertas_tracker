@@ -1,3 +1,5 @@
+import logging
+
 from almacen.conexion import abrir
 from fuentes.base import Captura
 from nucleo.evaluador import Reglas
@@ -275,15 +277,27 @@ def test_una_captura_inferida_que_cumple_se_confirma_y_alerta_con_el_dato_exacto
     assert fila["precio_internet"] == 92000   # el histórico guarda el dato exacto
 
 
-def test_si_la_confirmacion_falla_no_se_alerta_ni_se_escribe(tmp_path):
+def test_si_la_confirmacion_falla_no_se_alerta_ni_se_escribe(tmp_path, caplog):
+    """La ficha no da datos: se avisa y se descarta, sin escribir nada.
+
+    Las dos aserciones sobre el log son las que dan valor a las demás: sin
+    ellas, esta prueba pasaría igual con la guarda de `_confirmada` borrada,
+    porque el `IndexError` resultante lo tragaría el `except` ancho de
+    `_procesar` dejando el mismo estado observable.
+    """
     con = abrir(tmp_path / "p.db")
     avisos = NotificadorFalso()
     fuente = FuenteConBusquedaInferida([inferida(89990)], [])   # la ficha no devuelve nada
 
-    enviadas = ejecutar_ciclo(con, {"falabella": fuente}, [], busqueda(95000), avisos, CONFIG)
+    with caplog.at_level(logging.WARNING, logger="rastreador"):
+        enviadas = ejecutar_ciclo(con, {"falabella": fuente}, [], busqueda(95000), avisos, CONFIG)
 
     assert enviadas == 0
+    assert fuente.fichas_pedidas == [inferida(89990).url]   # sí se intentó confirmar
     assert con.execute("SELECT COUNT(*) FROM historico_precios").fetchone()[0] == 0
+
+    assert any("la ficha no dio datos" in m for m in caplog.messages)
+    assert not any("no se pudo procesar" in m for m in caplog.messages)
 
 
 def test_el_dato_exacto_deja_de_cumplir_y_no_se_alerta(tmp_path):
@@ -295,6 +309,7 @@ def test_el_dato_exacto_deja_de_cumplir_y_no_se_alerta(tmp_path):
     enviadas = ejecutar_ciclo(con, {"falabella": fuente}, [], busqueda(95000), avisos, CONFIG)
 
     assert enviadas == 0
+    assert fuente.fichas_pedidas == [inferida(89990).url]   # se confirmó de verdad
     assert avisos.enviados == []
 
 
