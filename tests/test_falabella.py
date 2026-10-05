@@ -108,6 +108,11 @@ def test_una_ficha_sin_bloque_anclado_se_descarta():
 
 
 def test_una_ficha_cuyo_json_ld_describe_otro_producto_se_descarta():
-    """Si el Product no es el de la URL, su sku arrastraría el anclaje."""
-    ajena = FICHA.replace('"sku":"80676157","name"', '"sku":"77777777","name"')
+    """El sku ajeno es justo el del carrusel de promoción de la fixture.
+
+    Sin la guarda, `a_captura` devuelve ese producto, el anclaje encuentra su
+    `sellerSkuId` en el bloque de promoción, y el precio de OTRO producto se
+    guardaría bajo la URL vigilada. No falla: miente.
+    """
+    ajena = FICHA.replace('"sku":"80676157","name"', '"sku":"99999999","name"')
     assert Falabella(lambda u: ajena).obtener([Referencia("falabella", TRES)]) == []
