@@ -102,6 +102,27 @@ def test_una_tienda_caida_no_detiene_a_las_demas(tmp_path):
     assert enviadas == 1
 
 
+def test_una_captura_que_falla_no_tumba_el_resto(tmp_path):
+    """El criterio 4 de la spec: un fallo se registra y el ciclo continúa."""
+    con = abrir(tmp_path / "p.db")
+    avisos = NotificadorFalso()
+
+    buena = captura(sku="S1")
+    rota = Captura(
+        tienda="paris", sku_externo="S2", titulo="Rota",
+        url=buena.url,  # misma URL que S1: viola el UNIQUE de productos.url
+        precio_internet=50000,
+    )
+
+    enviadas = ejecutar_ciclo(
+        con, {"paris": FuenteFalsa("paris", [rota, buena])},
+        [vigilado()], [], avisos, CONFIG,
+    )
+
+    assert enviadas == 1
+    assert con.execute("SELECT COUNT(*) FROM productos").fetchone()[0] == 1
+
+
 def test_una_tienda_sin_fuente_no_estalla(tmp_path):
     con = abrir(tmp_path / "p.db")
     avisos = NotificadorFalso()

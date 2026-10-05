@@ -1,5 +1,5 @@
 from almacen.conexion import abrir
-from almacen.operaciones import alta_o_actualiza_producto, registrar_alerta
+from almacen.operaciones import alta_o_actualiza_producto, registrar_alerta, ultima_alerta
 from fuentes.base import Captura
 from nucleo.frecuencia import debe_notificar
 
@@ -25,35 +25,41 @@ def envejecer(con, pid, dias):
 
 def test_la_primera_vez_siempre_avisa(tmp_path):
     con, pid = base(tmp_path)
-    assert debe_notificar(con, pid, "precio_maximo", 89990, 5) is True
+    anterior = ultima_alerta(con, pid, "precio_maximo")
+    assert debe_notificar(anterior, 89990, 5) is True
 
 
 def test_el_mismo_precio_no_vuelve_a_avisar(tmp_path):
     con, pid = base(tmp_path)
     registrar_alerta(con, pid, "precio_maximo", 89990)
-    assert debe_notificar(con, pid, "precio_maximo", 89990, 5) is False
+    anterior = ultima_alerta(con, pid, "precio_maximo")
+    assert debe_notificar(anterior, 89990, 5) is False
 
 
 def test_un_precio_mas_alto_no_avisa(tmp_path):
     con, pid = base(tmp_path)
     registrar_alerta(con, pid, "precio_maximo", 89990)
-    assert debe_notificar(con, pid, "precio_maximo", 92000, 5) is False
+    anterior = ultima_alerta(con, pid, "precio_maximo")
+    assert debe_notificar(anterior, 92000, 5) is False
 
 
 def test_una_bajada_vuelve_a_avisar(tmp_path):
     con, pid = base(tmp_path)
     registrar_alerta(con, pid, "precio_maximo", 89990)
-    assert debe_notificar(con, pid, "precio_maximo", 84990, 5) is True
+    anterior = ultima_alerta(con, pid, "precio_maximo")
+    assert debe_notificar(anterior, 84990, 5) is True
 
 
 def test_pasado_el_descanso_recuerda_la_oferta(tmp_path):
     con, pid = base(tmp_path)
     registrar_alerta(con, pid, "precio_maximo", 89990)
     envejecer(con, pid, 6)
-    assert debe_notificar(con, pid, "precio_maximo", 89990, 5) is True
+    anterior = ultima_alerta(con, pid, "precio_maximo")
+    assert debe_notificar(anterior, 89990, 5) is True
 
 
 def test_cada_regla_lleva_su_propia_cuenta(tmp_path):
     con, pid = base(tmp_path)
     registrar_alerta(con, pid, "precio_maximo", 89990)
-    assert debe_notificar(con, pid, "descuento_minimo_pct", 89990, 5) is True
+    anterior = ultima_alerta(con, pid, "descuento_minimo_pct")
+    assert debe_notificar(anterior, 89990, 5) is True

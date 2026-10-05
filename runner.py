@@ -19,6 +19,7 @@ from almacen.operaciones import (                  # noqa: E402
     minimo_historico,
     registrar_alerta,
     registrar_si_cambio,
+    ultima_alerta,
 )
 from avisos.archivo import NotificadorArchivo      # noqa: E402
 from avisos.telegram import NotificadorTelegram    # noqa: E402
@@ -100,35 +101,42 @@ def _procesar(con, capturas, reglas, notificador, config) -> int:
 
     enviadas = 0
     for captura in capturas:
-        producto_id = alta_o_actualiza_producto(con, captura)
-
-        # El mínimo se consulta ANTES de insertar la captura de hoy: si no, el
-        # precio actual sería su propio mínimo y el descuento siempre cero.
-        minimo = minimo_historico(con, producto_id, ventana)
-        dias = dias_de_historico(con, producto_id)
-
-        registrar_si_cambio(con, producto_id, captura)
-
-        veredicto = evaluar(captura, reglas, minimo, dias, dias_minimos)
-        if veredicto is None:
-            continue
-        if not debe_notificar(con, producto_id, veredicto.regla, veredicto.precio, cooldown):
-            continue
-
         try:
-            notificador.enviar(captura, veredicto)
-        except Exception as error:
-            # La captura ya está en el histórico, así que el dato no se pierde.
-            # No se registra la alerta: el próximo ciclo volverá a intentarlo.
-            registro.warning(
-                "no se pudo avisar de %s (%s); se reintentará en el próximo ciclo",
-                captura.url,
-                error,
-            )
-            continue
+            producto_id = alta_o_actualiza_producto(con, captura)
 
-        registrar_alerta(con, producto_id, veredicto.regla, veredicto.precio)
-        enviadas += 1
+            # El mínimo se consulta ANTES de insertar la captura de hoy: si no,
+            # el precio actual sería su propio mínimo y el descuento siempre
+            # cero.
+            minimo = minimo_historico(con, producto_id, ventana)
+            dias = dias_de_historico(con, producto_id)
+
+            registrar_si_cambio(con, producto_id, captura)
+
+            veredicto = evaluar(captura, reglas, minimo, dias, dias_minimos)
+            if veredicto is None:
+                continue
+            anterior = ultima_alerta(con, producto_id, veredicto.regla)
+            if not debe_notificar(anterior, veredicto.precio, cooldown):
+                continue
+
+            try:
+                notificador.enviar(captura, veredicto)
+            except Exception as error:
+                # La captura ya está en el histórico, así que el dato no se
+                # pierde. No se registra la alerta: el próximo ciclo volverá a
+                # intentarlo.
+                registro.warning(
+                    "no se pudo avisar de %s (%s); se reintentará en el próximo ciclo",
+                    captura.url,
+                    error,
+                )
+                continue
+
+            registrar_alerta(con, producto_id, veredicto.regla, veredicto.precio)
+            enviadas += 1
+        except Exception as error:  # noqa: BLE001
+            registro.warning("no se pudo procesar %s: %s", captura.url, error)
+            continue
 
     return enviadas
 
