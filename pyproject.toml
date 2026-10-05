@@ -1,0 +1,9 @@
+[project]
+name = "ofertas-tracker"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["requests", "PyYAML", "python-dotenv"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "."]
+testpaths = ["tests"]
