@@ -12,3 +12,9 @@ busquedas:
     tienda: paris
     reglas:
       precio_maximo: 400000
+
+  - termino: notebook 16gb
+    tienda: falabella
+    reglas:
+      precio_maximo: 400000
+      permitir_precio_tarjeta: false

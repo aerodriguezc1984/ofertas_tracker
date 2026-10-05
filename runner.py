@@ -27,6 +27,7 @@ from avisos.telegram import (                      # noqa: E402
     TelegramMalConfigurado,
 )
 from fuentes.base import Referencia                # noqa: E402
+from fuentes.falabella import Falabella            # noqa: E402
 from fuentes.paris import Paris                    # noqa: E402
 from fuentes.transporte import crear_transporte    # noqa: E402
 from nucleo.evaluador import Reglas, evaluar       # noqa: E402
@@ -245,7 +246,7 @@ def main() -> int:
         reintentos=config["ejecucion"]["reintentos"],
         pausa=tuple(config["ejecucion"]["espera_entre_peticiones_seg"]),
     )
-    fuentes = {"paris": Paris(transporte)}
+    fuentes = {"paris": Paris(transporte), "falabella": Falabella(transporte)}
 
     try:
         notificador = construir_notificador(config)
