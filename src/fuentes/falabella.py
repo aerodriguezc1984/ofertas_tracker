@@ -6,15 +6,22 @@ de una por resultado—, y sus precios vienen sin etiquetar, así que cuál es e
 tarjeta se infiere del orden y se confirma después contra la ficha.
 """
 
+import html as htmlmod
 import re
+from dataclasses import replace
 from urllib.parse import urlencode
 
 from fuentes.base import Candidato, Captura, Referencia
 from fuentes.jsonld import FuenteJsonLd
-from nucleo.normalizador import a_entero, productos_ld_json
+from nucleo.normalizador import a_captura, a_entero, productos_ld_json
 
 # Las fichas son /falabella-cl/product/<id>/<slug>/<id>
 _SKU_EN_URL = re.compile(r"/product/(\d+)/")
+
+# Dentro del JSON incrustado de la ficha, cada precio dice de qué tipo es.
+_PRECIO_ETIQUETADO = re.compile(
+    r'"type":"(cmrPrice|internetPrice|normalPrice)","price":\["([\d.]+)"\]'
+)
 
 
 class Falabella(FuenteJsonLd):
@@ -97,4 +104,60 @@ class Falabella(FuenteJsonLd):
         )
 
     def captura_de_ficha(self, html: str, url: str) -> Captura | None:
-        raise NotImplementedError("llega en la Tarea 5")
+        """El JSON-LD da título, SKU y stock; el JSON incrustado, los tres precios.
+
+        OJO con el desescapado: el bloque JSON-LD es válido tal cual y
+        desescaparlo lo ROMPE (su nombre lleva `&quot;` dentro de la cadena),
+        mientras que el JSON incrustado de los precios sí viene escapado. Por
+        eso `a_captura` recibe el HTML crudo y el anclaje, el desescapado.
+        """
+        base = a_captura(html, url, self.nombre)
+        if base is None:
+            return None
+
+        esperado = self._sku_de(url)
+        if esperado is None or base.sku_externo != esperado:
+            # `a_captura` devuelve el PRIMER Product utilizable de la página. Si
+            # algún día no es el de esta URL, el anclaje seguiría su sku —que sí
+            # aparece en los carruseles— y guardaríamos el precio de otro
+            # producto bajo la URL vigilada. No falla: miente.
+            return None
+
+        etiquetados = self._precios_anclados(htmlmod.unescape(html), base.sku_externo)
+        if "internetPrice" not in etiquetados:
+            return None
+
+        tarjeta = etiquetados.get("cmrPrice")
+        return replace(
+            base,
+            precio_internet=etiquetados["internetPrice"],
+            precio_normal=etiquetados.get("normalPrice"),
+            precio_tarjeta=tarjeta,
+            tarjeta=self.TARJETA if tarjeta is not None else None,
+            precios_etiquetados=True,
+        )
+
+    @staticmethod
+    def _precios_anclados(texto: str, sku: str) -> dict[str, int]:
+        """Los precios DEL producto, no los del carrusel de al lado.
+
+        Una ficha trae varias listas `prices`. Buscar hacia delante desde la
+        primera captura la de una promoción, que es de otro producto. Así que
+        se ancla al `sellerSkuId` que toca y se retrocede hasta el `"prices":[`
+        más cercano: esa es la lista del producto.
+        """
+        anclas = f'"sellerSkuId":"{re.escape(sku)}"'
+        for encontrado in re.finditer(anclas, texto):
+            inicio = texto.rfind('"prices":[', 0, encontrado.start())
+            if inicio == -1:
+                continue
+            pares = _PRECIO_ETIQUETADO.findall(texto[inicio : encontrado.start()])
+            if pares:
+                return {
+                    tipo: valor
+                    for tipo, valor in (
+                        (t, a_entero(v)) for t, v in pares
+                    )
+                    if valor is not None
+                }
+        return {}
