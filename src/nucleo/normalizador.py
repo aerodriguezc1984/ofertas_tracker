@@ -5,6 +5,7 @@ Es el motor genérico: cualquier tienda que publique un bloque
 escribir selectores para cada sitio.
 """
 
+import html as htmlmod
 import json
 import re
 
@@ -20,17 +21,52 @@ def bloques_ld_json(html: str) -> list[dict]:
     """Todos los objetos JSON-LD de la página. Los ilegibles se descartan."""
     objetos: list[dict] = []
     for crudo in _BLOQUE.findall(html):
+        texto = crudo.strip()
         try:
-            dato = json.loads(crudo.strip())
+            dato = json.loads(texto)
         except json.JSONDecodeError:
-            continue
+            # Algunas tiendas sirven el bloque escapado con entidades (&quot;).
+            # Se desescapa SOLO si el texto literal no era JSON: hacerlo a
+            # ciegas rompería un bloque válido cuyo contenido lleve `&quot;`
+            # dentro de una cadena, que es lo que publica Falabella.
+            try:
+                dato = json.loads(htmlmod.unescape(texto))
+            except json.JSONDecodeError:
+                continue
         for item in dato if isinstance(dato, list) else [dato]:
             if isinstance(item, dict):
                 objetos.append(item)
     return objetos
 
 
-def _a_entero(valor) -> int | None:
+def productos_ld_json(html: str) -> list[dict]:
+    """Los `Product` de la página: los de primer nivel y los de un `ItemList`."""
+    productos: list[dict] = []
+    for objeto in bloques_ld_json(html):
+        if _tipo_es(objeto, "Product"):
+            productos.append(objeto)
+            continue
+        if not _tipo_es(objeto, "ItemList"):
+            continue
+        for elemento in objeto.get("itemListElement") or []:
+            if not isinstance(elemento, dict):
+                continue
+            item = elemento.get("item") if _tipo_es(elemento, "ListItem") else elemento
+            if isinstance(item, dict) and _tipo_es(item, "Product"):
+                productos.append(item)
+    return productos
+
+
+def _texto(valor) -> str:
+    """Un campo de texto del JSON-LD, con sus entidades HTML resueltas.
+
+    El bloque entero no se desescapa (rompería el JSON), pero el contenido de
+    un campo sí puede traerlas: Falabella publica `Monitor 27&quot; 4K`.
+    """
+    return htmlmod.unescape(str(valor or "")).strip()
+
+
+def a_entero(valor) -> int | None:
     """Pasa el precio a pesos enteros, o None si no hay nada utilizable.
 
     Las tiendas escriben el precio de todas las formas imaginables: número,
@@ -66,19 +102,16 @@ def a_captura(html: str, url: str, tienda: str) -> Captura | None:
     varios Product); que uno no sirva no debe esconder al siguiente, así que un
     bloque inservible se salta con `continue`, nunca con `return`.
     """
-    for objeto in bloques_ld_json(html):
-        if not _tipo_es(objeto, "Product"):
-            continue
-
+    for objeto in productos_ld_json(html):
         ofertas = objeto.get("offers") or {}
         if isinstance(ofertas, list):
             ofertas = ofertas[0] if ofertas else {}
 
-        precio = _a_entero(ofertas.get("price"))
+        precio = a_entero(ofertas.get("price"))
         if precio is None:
             continue
 
-        sku = str(objeto.get("sku") or "").strip()
+        sku = _texto(objeto.get("sku"))
         if not sku:
             # La identidad del producto es (tienda, sku_externo). Sin sku, dos
             # productos distintos colapsarían en la misma fila: tan inventado
@@ -94,17 +127,20 @@ def a_captura(html: str, url: str, tienda: str) -> Captura | None:
         # silenciaría todas las alertas de las tiendas que no publican el dato.
         disponible = "outofstock" not in disponibilidad.lower().replace("/", "")
 
-        ean = objeto.get("gtin13") or objeto.get("gtin14") or objeto.get("gtin")
+        # Algunas tiendas publican la cadena "null" en vez de omitir el campo.
+        ean = _texto(objeto.get("gtin13") or objeto.get("gtin14") or objeto.get("gtin"))
+        if ean.lower() in ("", "null", "none"):
+            ean = None
 
         return Captura(
             tienda=tienda,
             sku_externo=sku,
-            titulo=str(objeto.get("name") or "").strip(),
+            titulo=_texto(objeto.get("name")),
             url=url,
             precio_internet=precio,
-            precio_normal=_a_entero(objeto.get("listPrice")),
+            precio_normal=a_entero(objeto.get("listPrice")),
             disponible=disponible,
             imagen_url=imagen if isinstance(imagen, str) else None,
-            ean=str(ean) if ean is not None else None,
+            ean=ean,
         )
     return None

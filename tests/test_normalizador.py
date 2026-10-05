@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from nucleo.normalizador import a_captura, bloques_ld_json
+from nucleo.normalizador import a_captura, a_entero, bloques_ld_json, productos_ld_json
 
 FIXTURES = Path(__file__).parent / "fixtures"
 URL = "https://www.paris.cl/home-panel-monaco-MK2GCAHDUR.html"
@@ -101,3 +101,64 @@ def test_agotado_segun_availability():
     )
     c = a_captura(html, URL, "paris")
     assert c is not None and c.disponible is False
+
+
+ESCAPADO = (
+    '<script type="application/ld+json">'
+    "{&quot;@type&quot;:&quot;Product&quot;,&quot;name&quot;:&quot;Escapado&quot;,"
+    "&quot;sku&quot;:&quot;E1&quot;,&quot;offers&quot;:{&quot;price&quot;:&quot;1000&quot;}}"
+    "</script>"
+)
+
+# Bloque VÁLIDO cuyo texto contiene una entidad: desescaparlo lo rompería,
+# porque `&quot;` se convertiría en una comilla real dentro de la cadena.
+CON_ENTIDAD = (
+    '<script type="application/ld+json">'
+    '{"@type":"Product","name":"Monitor 27&quot; 4K","sku":"M1",'
+    '"offers":{"price":"1000"}}'
+    "</script>"
+)
+
+LISTA = (
+    '<script type="application/ld+json">'
+    '{"@type":"ItemList","itemListElement":['
+    '{"@type":"ListItem","position":1,"item":{"@type":"Product","name":"Uno","sku":"U1"}},'
+    '{"@type":"ListItem","position":2,"item":{"@type":"Product","name":"Dos","sku":"D1"}}'
+    "]}</script>"
+)
+
+
+def test_un_bloque_escapado_con_entidades_se_recupera():
+    c = a_captura(ESCAPADO, "https://t.cl/e.html", "tienda")
+    assert c is not None and c.sku_externo == "E1"
+
+
+def test_un_bloque_valido_con_entidades_no_se_rompe():
+    """Desescapar a ciegas convertiría `&quot;` en comilla y partiría el JSON."""
+    c = a_captura(CON_ENTIDAD, "https://t.cl/m.html", "tienda")
+    assert c is not None
+    assert c.titulo == 'Monitor 27" 4K'
+
+
+def test_productos_ld_json_encuentra_los_de_un_itemlist():
+    assert [p["sku"] for p in productos_ld_json(LISTA)] == ["U1", "D1"]
+
+
+def test_productos_ld_json_encuentra_los_de_primer_nivel():
+    assert [p["sku"] for p in productos_ld_json(CON_ENTIDAD)] == ["M1"]
+
+
+def test_un_ean_que_vale_null_se_descarta():
+    """Falabella publica literalmente la cadena "null" cuando no tiene gtin."""
+    html = (
+        '<script type="application/ld+json">'
+        '{"@type":"Product","name":"X","sku":"S1","gtin13":"null",'
+        '"offers":{"price":"1000"}}'
+        "</script>"
+    )
+    c = a_captura(html, "https://t.cl/x.html", "tienda")
+    assert c is not None and c.ean is None
+
+
+def test_a_entero_es_publica():
+    assert a_entero("229.990") == 229990
