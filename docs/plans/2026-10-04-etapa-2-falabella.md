@@ -101,6 +101,12 @@ def test_el_historico_crece_si_cambia_la_tarjeta(tmp_path):
 
     con_otra = replace(con_cmr, tarjeta="CENCOSUD")
     assert registrar_si_cambio(con, pid, con_otra) is True
+
+    # La tercera llamada es la que da valor a las dos primeras: sin ella, esta
+    # prueba pasaría también con el SELECT y la tupla desalineados, porque dos
+    # tuplas de distinta longitud nunca son iguales y la función devolvería
+    # `True` siempre.
+    assert registrar_si_cambio(con, pid, con_otra) is False
     assert con.execute("SELECT COUNT(*) FROM historico_precios").fetchone()[0] == 2
 ```
 
