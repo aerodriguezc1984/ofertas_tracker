@@ -37,11 +37,27 @@ def crear_transporte(
             dormir(random.uniform(*pausa))
 
         for intento in range(1, reintentos + 1):
-            respuesta = sesion.get(
-                url,
-                headers={"User-Agent": AGENTE, "Accept-Language": "es-CL,es;q=0.9"},
-                timeout=30,
-            )
+            try:
+                respuesta = sesion.get(
+                    url,
+                    headers={"User-Agent": AGENTE, "Accept-Language": "es-CL,es;q=0.9"},
+                    timeout=30,
+                )
+            except requests.RequestException as error:
+                # Fallo de red o tiempo agotado: tan reintentable como un 5xx.
+                # Solo se lleva el nombre del tipo, igual que en telegram.py.
+                if intento < reintentos:
+                    espera = 2.0**intento
+                    registro.warning(
+                        "%s falló (%s); reintento %s de %s en %.0f s",
+                        url, type(error).__name__, intento, reintentos, espera,
+                    )
+                    dormir(espera)
+                    continue
+                raise TiendaBloqueada(
+                    f"{url} agotó los {reintentos} intentos ({type(error).__name__})"
+                ) from None
+
             if respuesta.status_code == 200:
                 return respuesta.text
 

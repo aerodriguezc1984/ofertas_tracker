@@ -1,4 +1,5 @@
 import pytest
+import requests
 
 from fuentes.transporte import TiendaBloqueada, crear_transporte
 
@@ -18,7 +19,10 @@ class SesionFalsa:
 
     def get(self, url, headers=None, timeout=None):
         self.urls.append(url)
-        return self.respuestas.pop(0)
+        respuesta = self.respuestas.pop(0)
+        if isinstance(respuesta, Exception):
+            raise respuesta
+        return respuesta
 
 
 def test_devuelve_el_cuerpo_cuando_responde_bien():
@@ -48,6 +52,18 @@ def test_un_404_no_se_reintenta():
     with pytest.raises(TiendaBloqueada):
         traer("https://www.paris.cl/x.html")
     assert len(sesion.urls) == 1
+
+
+def test_un_error_de_red_se_reintenta_y_no_pierde_lo_ya_obtenido():
+    """La spec: fallo de red se reintenta según configuración, no se propaga crudo."""
+    sesion = SesionFalsa(
+        [requests.ConnectionError("sin conexión"), requests.ConnectionError("sin conexión"),
+         RespuestaFalsa(200, "ok")]
+    )
+    esperas = []
+    traer = crear_transporte(sesion=sesion, reintentos=3, pausa=None, dormir=esperas.append)
+    assert traer("https://www.paris.cl/x.html") == "ok"
+    assert len(esperas) == 2
 
 
 def test_la_espera_crece_entre_intentos():
