@@ -49,16 +49,23 @@ Cuatro particularidades que el código actual no sobrevive:
 La cuarta es la versión profunda del defecto I5 que cerró la etapa anterior: «el primer bloque gana»
 es una suposición con forma de Paris.
 
-### El dato que falta
+### El dato que faltaba, ya resuelto
 
-De cuatro productos comparados, **tres coinciden exactamente** entre el orden de la búsqueda y las
-etiquetas de la ficha, y **uno no**: su precio intermedio difiere (679.990 en la búsqueda,
-619.990 de `internetPrice` en la ficha). O el anclaje al SKU tiene un fallo, o la discrepancia es
-real. **La primera tarea de la implementación lo resuelve** sobre una muestra mayor, antes de
-construir nada encima.
+Una primera comparación dio tres coincidencias de cuatro, con un precio intermedio discrepante.
+Repetida sobre ocho productos con el anclaje corregido: **ocho de ocho coinciden**. La discrepancia
+era un fallo de mi sonda, no de los datos de Falabella.
 
-Las dos respuestas sirven: si es real, refuerza el diseño de abajo; si es un fallo de parseo, hay
-que corregirlo antes de que se convierta en cimiento.
+El anclaje que funciona, y que el adaptador debe usar: **desde cada `"sellerSkuId":"<sku>"` que
+coincida, retroceder al `"prices":[` más cercano hacia atrás** (`str.rfind`), y leer los pares
+`"type"`/`"price"` de esa ventana. Buscar hacia delante desde el primer `"prices":[` captura el
+bloque de un carrusel de promoción, que es de otro producto.
+
+Con eso, el mapeo del orden ascendente se sostuvo en los ocho casos: tres ofertas → tarjeta,
+internet, normal; dos ofertas → internet, normal.
+
+> Ocho productos de un término de búsqueda en un solo día **no son una demostración**, y por eso
+> la confirmación contra la ficha sigue en el diseño: cuesta una o dos peticiones por ciclo y
+> elimina la clase entera de fallo. La inferencia es buena para filtrar, no para alertar.
 
 ## Decisiones y su porqué
 
@@ -253,8 +260,10 @@ Cada prueba nueva se comprueba rompiendo a propósito lo que dice medir, antes d
 
 ## Riesgos conocidos
 
-**1. La discrepancia sin resolver.** Descrita arriba. Es la primera tarea del plan y condiciona
-el resto: si el anclaje al SKU está mal, está mal en el corazón del adaptador.
+**1. El anclaje al SKU es el corazón del adaptador.** Ya está resuelto y verificado sobre ocho
+productos, pero sigue siendo la pieza más frágil: depende de la forma del JSON incrustado de
+Falabella, que puede cambiar sin aviso. Tiene prueba dedicada con una *fixture* de dos bloques
+`prices`, y la sonda manual lo comprueba contra el sitio real.
 
 **2. Falabella puede bloquear.** Hoy no lo hace. Si empieza, la decisión de no evadir significa
 perder la tienda, no sortear la defensa. Está asumido desde la Etapa 1.
@@ -265,4 +274,4 @@ siendo más barato que con cuatro.
 
 ## Siguiente paso
 
-Plan de implementación, con la verificación de la discrepancia como primera tarea.
+Plan de implementación en `docs/plans/2026-10-04-etapa-2-falabella.md`.
