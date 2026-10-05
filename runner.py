@@ -138,7 +138,11 @@ def _procesar(con, capturas, reglas, notificador, config) -> int:
             registrar_alerta(con, producto_id, veredicto.regla, veredicto.precio)
             enviadas += 1
         except Exception as error:  # noqa: BLE001
-            registro.warning("no se pudo procesar %s: %s", captura.url, error)
+            # Con traza: este `except` es ancho a propósito, y sin el tipo y el
+            # fichero un error nuestro se confundiría con una captura saltada.
+            registro.warning(
+                "no se pudo procesar %s: %s", captura.url, error, exc_info=True
+            )
             continue
 
     return enviadas
