@@ -22,7 +22,10 @@ from almacen.operaciones import (                  # noqa: E402
     ultima_alerta,
 )
 from avisos.archivo import NotificadorArchivo      # noqa: E402
-from avisos.telegram import NotificadorTelegram    # noqa: E402
+from avisos.telegram import (                      # noqa: E402
+    NotificadorTelegram,
+    TelegramMalConfigurado,
+)
 from fuentes.base import Referencia                # noqa: E402
 from fuentes.paris import Paris                    # noqa: E402
 from fuentes.transporte import crear_transporte    # noqa: E402
@@ -166,7 +169,7 @@ def ejecutar_ciclo(con, fuentes, vigilados, busquedas, notificador, config) -> i
             registro.warning("sin fuente para la tienda %r", busqueda["tienda"])
             continue
         try:
-            capturas = fuente.buscar(busqueda["termino"], busqueda.get("limite", limite))
+            capturas = fuente.buscar(busqueda["termino"], limite)
         except Exception as error:  # noqa: BLE001
             registro.warning("búsqueda en %s falló: %s", fuente.nombre, error)
             continue
@@ -189,6 +192,10 @@ def main() -> int:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    # urllib3 registra la ruta de cada petición en DEBUG, y la de Telegram
+    # lleva el token incrustado. No depender del nivel por defecto.
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+
     load_dotenv(RAIZ / ".env")
 
     config = cargar_config(RAIZ / "config" / "config.yaml")
@@ -200,10 +207,14 @@ def main() -> int:
     )
     fuentes = {"paris": Paris(transporte)}
 
+    try:
+        notificador = construir_notificador(config)
+    except TelegramMalConfigurado as error:
+        print(f"Error de configuración: {error}")
+        return 1
+
     con = abrir(RAIZ / "data" / "tracker.db")
-    enviadas = ejecutar_ciclo(
-        con, fuentes, vigilados, busquedas, construir_notificador(config), config
-    )
+    enviadas = ejecutar_ciclo(con, fuentes, vigilados, busquedas, notificador, config)
     registro.info("ciclo terminado: %s alertas enviadas", enviadas)
     return 0
 
