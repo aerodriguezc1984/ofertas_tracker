@@ -37,26 +37,40 @@ def cargar_config(ruta: Path | str) -> dict:
     return yaml.safe_load(Path(ruta).read_text(encoding="utf-8"))
 
 
+def _reglas_de(entrada: dict, que: str) -> Reglas | None:
+    """Las Reglas de una entrada, o None si declara alguna que no existe.
+
+    Una errata en el YAML debe costar ese producto, no el ciclo entero.
+    """
+    try:
+        return Reglas(**(entrada.get("reglas") or {}))
+    except TypeError as error:
+        registro.warning("se salta %s por una regla desconocida: %s", que, error)
+        return None
+
+
 def cargar_lista_deseos(ruta: Path | str) -> tuple[list[dict], list[dict]]:
     """Devuelve (vigilados, busquedas) con las reglas ya convertidas."""
     datos = yaml.safe_load(Path(ruta).read_text(encoding="utf-8")) or {}
 
-    vigilados = [
-        {
-            "tienda": entrada["tienda"],
-            "url": entrada["url"],
-            "reglas": Reglas(**(entrada.get("reglas") or {})),
-        }
-        for entrada in datos.get("vigilados") or []
-    ]
-    busquedas = [
-        {
-            "tienda": entrada["tienda"],
-            "termino": entrada["termino"],
-            "reglas": Reglas(**(entrada.get("reglas") or {})),
-        }
-        for entrada in datos.get("busquedas") or []
-    ]
+    vigilados = []
+    for entrada in datos.get("vigilados") or []:
+        reglas = _reglas_de(entrada, entrada["url"])
+        if reglas is None:
+            continue
+        vigilados.append(
+            {"tienda": entrada["tienda"], "url": entrada["url"], "reglas": reglas}
+        )
+
+    busquedas = []
+    for entrada in datos.get("busquedas") or []:
+        reglas = _reglas_de(entrada, entrada["termino"])
+        if reglas is None:
+            continue
+        busquedas.append(
+            {"tienda": entrada["tienda"], "termino": entrada["termino"], "reglas": reglas}
+        )
+
     return vigilados, busquedas
 
 

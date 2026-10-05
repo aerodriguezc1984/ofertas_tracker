@@ -1,7 +1,7 @@
 from almacen.conexion import abrir
 from fuentes.base import Captura
 from nucleo.evaluador import Reglas
-from runner import ejecutar_ciclo
+from runner import cargar_lista_deseos, ejecutar_ciclo
 
 CONFIG = {
     "ejecucion": {"limite_por_busqueda": 15},
@@ -140,3 +140,58 @@ def test_un_fallo_al_avisar_no_detiene_el_ciclo_ni_marca_la_alerta(tmp_path):
     assert con.execute("SELECT COUNT(*) FROM registro_alertas").fetchone()[0] == 0
     # El histórico sí se guardó: el dato no se pierde.
     assert con.execute("SELECT COUNT(*) FROM historico_precios").fetchone()[0] == 1
+
+
+def test_una_regla_desconocida_se_salta_sin_abortar(tmp_path):
+    """Una errata en el YAML cuesta ese producto, no el ciclo entero."""
+    ruta = tmp_path / "lista.yaml"
+    ruta.write_text(
+        "vigilados:\n"
+        "  - tienda: paris\n"
+        "    url: https://www.paris.cl/bueno-S1.html\n"
+        "    reglas:\n"
+        "      precio_maximo: 1000\n"
+        "  - tienda: paris\n"
+        "    url: https://www.paris.cl/malo-S2.html\n"
+        "    reglas:\n"
+        "      descuento_inventado: 99\n",
+        encoding="utf-8",
+    )
+
+    vigilados, busquedas = cargar_lista_deseos(ruta)
+
+    assert len(vigilados) == 1
+    assert vigilados[0]["url"].endswith("bueno-S1.html")
+    assert busquedas == []
+
+
+def test_el_descuento_se_mide_contra_el_minimo_anterior_a_la_captura(tmp_path):
+    """Si el mínimo se consultara tras guardar, hoy sería su propio mínimo.
+
+    Fija el orden de `_procesar`: consultar el histórico ANTES de insertar la
+    captura de hoy. Con el orden invertido el descuento saldría siempre 0 %.
+    """
+    con = abrir(tmp_path / "p.db")
+    avisos = NotificadorFalso()
+    vigilado_con_descuento = {
+        "tienda": "paris",
+        "url": "https://www.paris.cl/n-S1.html",
+        "reglas": Reglas(descuento_minimo_pct=15),
+    }
+
+    # Primer ciclo: deja el histórico en 100000, y se envejece 30 días para
+    # superar la guarda de arranque en frío.
+    ejecutar_ciclo(
+        con, {"paris": FuenteFalsa("paris", [captura(100000)])},
+        [vigilado_con_descuento], [], avisos, CONFIG,
+    )
+    con.execute("UPDATE historico_precios SET capturado_el = datetime('now', '-30 days')")
+
+    # Segundo ciclo: 80000 es un 20 % por debajo de ese mínimo de 100000.
+    enviadas = ejecutar_ciclo(
+        con, {"paris": FuenteFalsa("paris", [captura(80000)])},
+        [vigilado_con_descuento], [], avisos, CONFIG,
+    )
+
+    assert enviadas == 1
+    assert avisos.enviados[-1][1].regla == "descuento_minimo_pct"
