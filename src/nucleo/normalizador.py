@@ -11,7 +11,7 @@ import re
 from fuentes.base import Captura
 
 _BLOQUE = re.compile(
-    r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>',
+    r"""<script[^>]*type=["']?application/ld\+json["']?[^>]*>(.*?)</script>""",
     re.DOTALL | re.IGNORECASE,
 )
 
@@ -60,7 +60,12 @@ def _tipo_es(objeto: dict, tipo: str) -> bool:
 
 
 def a_captura(html: str, url: str, tienda: str) -> Captura | None:
-    """La Captura de la ficha, o None si la página no da un precio utilizable."""
+    """La Captura de la ficha, o None si ningún bloque da precio y sku utilizables.
+
+    Una página puede traer varios bloques JSON-LD (Falabella, abc.cl publican
+    varios Product); que uno no sirva no debe esconder al siguiente, así que un
+    bloque inservible se salta con `continue`, nunca con `return`.
+    """
     for objeto in bloques_ld_json(html):
         if not _tipo_es(objeto, "Product"):
             continue
@@ -71,7 +76,14 @@ def a_captura(html: str, url: str, tienda: str) -> Captura | None:
 
         precio = _a_entero(ofertas.get("price"))
         if precio is None:
-            return None
+            continue
+
+        sku = str(objeto.get("sku") or "").strip()
+        if not sku:
+            # La identidad del producto es (tienda, sku_externo). Sin sku, dos
+            # productos distintos colapsarían en la misma fila: tan inventado
+            # como un precio en cero.
+            continue
 
         imagen = objeto.get("image")
         if isinstance(imagen, list):
@@ -82,15 +94,17 @@ def a_captura(html: str, url: str, tienda: str) -> Captura | None:
         # silenciaría todas las alertas de las tiendas que no publican el dato.
         disponible = "outofstock" not in disponibilidad.lower().replace("/", "")
 
+        ean = objeto.get("gtin13") or objeto.get("gtin14") or objeto.get("gtin")
+
         return Captura(
             tienda=tienda,
-            sku_externo=str(objeto.get("sku") or "").strip(),
+            sku_externo=sku,
             titulo=str(objeto.get("name") or "").strip(),
             url=url,
             precio_internet=precio,
             precio_normal=_a_entero(objeto.get("listPrice")),
             disponible=disponible,
             imagen_url=imagen if isinstance(imagen, str) else None,
-            ean=objeto.get("gtin13") or objeto.get("gtin14") or objeto.get("gtin"),
+            ean=str(ean) if ean is not None else None,
         )
     return None

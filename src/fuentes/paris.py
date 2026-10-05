@@ -37,7 +37,7 @@ class Paris:
 
             captura = a_captura(html, referencia.url, self.nombre)
             if captura is None:
-                registro.warning("paris: sin precio utilizable en %s", referencia.url)
+                registro.warning("paris: sin datos utilizables en %s", referencia.url)
                 continue
             capturas.append(captura)
         return capturas

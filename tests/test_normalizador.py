@@ -64,6 +64,34 @@ def test_el_precio_siempre_acaba_en_entero(crudo, esperado):
     assert c is not None and c.precio_internet == esperado
 
 
+def test_sin_sku_no_hay_captura():
+    """Sin identidad utilizable, mezclaría el histórico de dos productos distintos."""
+    html = (
+        '<script type="application/ld+json">'
+        '{"@type":"Product","name":"X",'
+        '"offers":{"price":1000}}'
+        "</script>"
+    )
+    assert a_captura(html, URL, "paris") is None
+
+
+def test_un_bloque_sin_precio_no_tapa_al_siguiente_bloque_valido():
+    """Varios JSON-LD por página (Falabella, abc.cl): uno inservible no esconde al resto."""
+    html = (
+        '<script type="application/ld+json">'
+        '{"@type":"Product","name":"Sin oferta"}'
+        "</script>"
+        '<script type="application/ld+json">'
+        '{"@type":"Product","name":"Con oferta","sku":"S2",'
+        '"offers":{"price":1000}}'
+        "</script>"
+    )
+    c = a_captura(html, URL, "paris")
+    assert c is not None
+    assert c.sku_externo == "S2"
+    assert c.titulo == "Con oferta"
+
+
 def test_agotado_segun_availability():
     html = (
         '<script type="application/ld+json">'
