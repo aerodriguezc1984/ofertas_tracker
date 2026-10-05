@@ -23,6 +23,10 @@ class Captura:
     disponible: bool = True
     imagen_url: str | None = None
     ean: str | None = None
+    # Falso solo cuando los precios se han inferido del orden en que la tienda
+    # los lista, sin etiqueta que diga cuál es cuál. El orquestador confirma
+    # contra la ficha antes de alertar o de escribir en el histórico.
+    precios_etiquetados: bool = True
 
 
 @dataclass(frozen=True)
@@ -32,6 +36,18 @@ class Referencia:
     tienda: str
     url: str
     sku_externo: str | None = None
+
+
+@dataclass(frozen=True)
+class Candidato:
+    """Lo que una búsqueda encuentra: dónde mirar y lo que ya se sabe de ahí.
+
+    Unas tiendas devuelven enlaces que hay que seguir (`captura` a None); otras
+    traen los productos dentro de la propia página de resultados.
+    """
+
+    referencia: Referencia
+    captura: Captura | None = None
 
 
 class Fuente(Protocol):
