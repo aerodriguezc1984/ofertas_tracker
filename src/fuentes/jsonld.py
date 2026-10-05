@@ -76,12 +76,14 @@ class FuenteJsonLd:
         vistos: list[str] = []
         elegidos: list[Candidato] = []
         for candidato in self.candidatos(html):
+            # El corte va ANTES de aceptar nada: con `limite=0` no se elige
+            # ninguno, igual que el antiguo `vistas[:limite]`.
+            if len(elegidos) >= limite:
+                break
             if candidato.referencia.url in vistos:
                 continue
             vistos.append(candidato.referencia.url)
             elegidos.append(candidato)
-            if len(elegidos) >= limite:
-                break
 
         # El corte por límite sucede ANTES de pedir ninguna ficha: es lo que
         # hace barata una búsqueda en una tienda que trae 56 productos de golpe.

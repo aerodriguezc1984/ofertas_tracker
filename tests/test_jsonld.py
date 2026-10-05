@@ -67,8 +67,20 @@ def test_la_base_deduplica_y_corta_por_limite():
     otro = Candidato(referencia=Referencia("prueba", "https://t.cl/b.html"), captura=captura(sku="S2", url="https://t.cl/b.html"))
     tercero = Candidato(referencia=Referencia("prueba", "https://t.cl/c.html"), captura=captura(sku="S3", url="https://t.cl/c.html"))
 
-    fuente = FuenteDePrueba(traer, [repetido, repetido, otro, tercero])
-    assert len(fuente.buscar("x", limite=2)) == 2
+    capturas = FuenteDePrueba(traer, [repetido, repetido, otro, tercero]).buscar("x", limite=2)
+
+    # Afirmar CUÁLES vuelven, no cuántos: sin deduplicado volverían dos veces
+    # la misma y el recuento seguiría dando 2.
+    assert [c.url for c in capturas] == ["https://t.cl/a.html", "https://t.cl/b.html"]
+
+
+def test_un_limite_de_cero_no_elige_ningun_candidato():
+    """El corte va antes de aceptar: `limite=0` no devuelve nada."""
+    def traer(url):
+        return "busqueda"
+
+    uno = Candidato(referencia=Referencia("prueba", "https://t.cl/a.html"), captura=captura())
+    assert FuenteDePrueba(traer, [uno]).buscar("x", limite=0) == []
 
 
 def test_una_busqueda_bloqueada_devuelve_vacio():
