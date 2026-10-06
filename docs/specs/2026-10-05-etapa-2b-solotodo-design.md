@@ -234,11 +234,16 @@ identificador cambia y sus productos se duplican en nuestra base. Usar su identi
 evitaría, pero haría la configuración ilegible (`tienda: st30`). Se elige el nombre legible a
 sabiendas; si alguna vez ocurre, se arregla con una tabla de alias.
 
-**2. Las condiciones de uso de la API no están verificadas.** Es pública, navegable y sin
-autenticación, y su `robots.txt` no la cubre. Aun así, la primera tarea de la implementación debe
-buscar unas condiciones de uso o un límite de peticiones publicado, y dejar escrito lo que
-encuentre. El ritmo del proyecto ya es bajo —dos peticiones por ciclo— pero «no encontré
-condiciones» y «no las busqué» no son lo mismo.
+**2. No hay condiciones de uso publicadas, y eso no es lo mismo que permiso.** *Buscadas el
+2026-10-05:* la API no devuelve ninguna cabecera de cuota o límite, y las rutas obvias de términos
+en la web (`/terminos-y-condiciones`, `/about`, `/acerca-de`) dan 404 o la cáscara de la aplicación.
+Es pública, navegable, sin autenticación, y su `robots.txt` solo cubre `/search` de la web.
+
+Así que el resultado es «busqué y no encontré nada publicado», que es distinto de «está
+autorizado». La conducta que se deriva es la misma que el proyecto lleva desde el primer día:
+ritmo bajo —dos peticiones por ciclo—, cabecera que se identifica de verdad, y ninguna insistencia
+si algún día responde 429. Si aparecieran condiciones que esto incumple, la fuente se retira; no se
+sortea.
 
 **3. Se depende de la cobertura y la frescura de un tercero.** Si SoloTodo deja de actualizar una
 tienda, lo pareceremos nosotros. `last_pricing_update` viene en cada entidad y permitiría avisar de
@@ -246,4 +251,4 @@ datos rancios; no entra en esta etapa, pero queda anotado.
 
 ## Siguiente paso
 
-Plan de implementación, con la verificación de las condiciones de uso como primera tarea.
+Plan de implementación en `docs/plans/2026-10-05-etapa-2b-solotodo.md`.
