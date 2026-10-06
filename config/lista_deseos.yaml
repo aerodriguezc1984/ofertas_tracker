@@ -13,8 +13,12 @@ busquedas:
     reglas:
       precio_maximo: 400000
 
-  - termino: notebook 16gb
+  # «notebook 16gb» devolvía casi solo reacondicionados de marketplace, cuyas
+  # fichas no se pueden confirmar: su `sellerSkuId` es el código interno del
+  # vendedor (`t14`), no un número de Falabella, así que el anclaje nunca casa.
+  # «notebook» saca producto de la propia tienda, que sí confirma.
+  - termino: notebook
     tienda: falabella
     reglas:
-      precio_maximo: 400000
+      precio_maximo: 700000
       permitir_precio_tarjeta: false
