@@ -1,0 +1,83 @@
+"""Fuente de api.solotodo.com.
+
+SoloTodo no es una tienda sino un agregador con API REST pública: cubre cientos
+de tiendas chilenas y, además del precio, da el identificador del mismo artículo
+en todas ellas.
+
+No hereda de `FuenteJsonLd` porque no lee HTML. `Fuente` es un protocolo, no una
+jerarquía, y esta fuente lo cumple por su cuenta.
+"""
+
+import logging
+import re
+import unicodedata
+
+from fuentes.base import Captura
+from nucleo.normalizador import a_entero
+
+registro = logging.getLogger(__name__)
+
+_NO_ALFANUM = re.compile(r"[^a-z0-9]+")
+
+
+def identificador_de_tienda(nombre: str) -> str:
+    """`AbcDin` -> `abcdin`; `PC Factory` -> `pc-factory`.
+
+    El identificador sale del nombre y no del número que SoloTodo le da, para
+    que la configuración se pueda leer. El precio es que un cambio de nombre en
+    su catálogo duplicaría los productos de esa tienda; está asumido en la spec.
+    """
+    sin_acentos = (
+        unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode("ascii")
+    )
+    return _NO_ALFANUM.sub("-", sin_acentos.lower()).strip("-")
+
+
+def captura_de_entidad(
+    entidad: dict, tiendas: dict[int, str], excluidas: set[str]
+) -> Captura | None:
+    """La Captura de una entidad, o None si no hay nada utilizable que guardar.
+
+    `tienda` es la tienda REAL: el producto está en AbcDin, y SoloTodo es solo
+    quien nos lo cuenta.
+    """
+    registro_activo = entidad.get("active_registry")
+    if not registro_activo:
+        return None   # la tienda ya no lo ofrece
+
+    nombre_tienda = tiendas.get(entidad.get("store"))
+    if nombre_tienda is None:
+        registro.warning(
+            "solotodo: entidad %s de una tienda desconocida (%s)",
+            entidad.get("id"),
+            entidad.get("store"),
+        )
+        return None
+
+    tienda = identificador_de_tienda(nombre_tienda)
+    if tienda in excluidas:
+        return None   # la cubrimos en directo, con más precisión
+
+    interno = a_entero(registro_activo.get("offer_price"))
+    sku = str(entidad.get("sku") or "").strip()
+    titulo = str(entidad.get("name") or "").strip()
+    url = str(entidad.get("external_url") or "").strip()
+    if interno is None or not sku or not titulo or not url:
+        registro.warning("solotodo: entidad %s incompleta", entidad.get("id"))
+        return None
+
+    producto = entidad.get("product") or {}
+
+    return Captura(
+        tienda=tienda,
+        sku_externo=sku,
+        titulo=titulo,
+        url=url,
+        precio_internet=interno,
+        precio_normal=a_entero(registro_activo.get("normal_price")),
+        precio_tarjeta=None,   # SoloTodo no publica precios con tarjeta
+        tarjeta=None,
+        disponible=bool(registro_activo.get("is_available")),
+        ean=str(entidad["ean"]) if entidad.get("ean") else None,
+        producto_solotodo=producto.get("id") if isinstance(producto, dict) else None,
+    )
