@@ -467,8 +467,21 @@ def test_la_base_deduplica_y_corta_por_limite():
     otro = Candidato(referencia=Referencia("prueba", "https://t.cl/b.html"), captura=captura(sku="S2", url="https://t.cl/b.html"))
     tercero = Candidato(referencia=Referencia("prueba", "https://t.cl/c.html"), captura=captura(sku="S3", url="https://t.cl/c.html"))
 
-    fuente = FuenteDePrueba(traer, [repetido, repetido, otro, tercero])
-    assert len(fuente.buscar("x", limite=2)) == 2
+    capturas = FuenteDePrueba(traer, [repetido, repetido, otro, tercero]).buscar("x", limite=2)
+
+    # Afirmar CUÁLES vuelven, no cuántos: sin deduplicado volverían dos veces
+    # la misma y el recuento seguiría dando 2.
+    assert [c.url for c in capturas] == ["https://t.cl/a.html", "https://t.cl/b.html"]
+
+
+def test_un_limite_de_cero_no_elige_ningun_candidato():
+    """El corte va antes de aceptar: `limite=0` no devuelve nada."""
+
+    def traer(url):
+        return "busqueda"
+
+    uno = Candidato(referencia=Referencia("prueba", "https://t.cl/a.html"), captura=captura())
+    assert FuenteDePrueba(traer, [uno]).buscar("x", limite=0) == []
 
 
 def test_una_busqueda_bloqueada_devuelve_vacio():
@@ -584,12 +597,14 @@ class FuenteJsonLd:
         vistos: list[str] = []
         elegidos: list[Candidato] = []
         for candidato in self.candidatos(html):
+            # El corte va ANTES de aceptar nada: con `limite=0` no se elige
+            # ninguno, igual que hacía el antiguo `vistas[:limite]`.
+            if len(elegidos) >= limite:
+                break
             if candidato.referencia.url in vistos:
                 continue
             vistos.append(candidato.referencia.url)
             elegidos.append(candidato)
-            if len(elegidos) >= limite:
-                break
 
         # El corte por límite sucede ANTES de pedir ninguna ficha: es lo que
         # hace barata una búsqueda en una tienda que trae 56 productos de golpe.
@@ -645,7 +660,7 @@ class Paris(FuenteJsonLd):
 - [ ] **Paso 4: Ejecutar y comprobar que pasan**
 
 Ejecuta: `python -m pytest -v`
-Esperado: **89 pasadas** (83 + 6). **Las 6 de `tests/test_paris.py` siguen pasando sin haberlas
+Esperado: **90 pasadas** (83 + 7). **Las 6 de `tests/test_paris.py` siguen pasando sin haberlas
 tocado** — ese es el criterio de esta tarea. Si alguna falla, la base cambió un comportamiento que
 debía conservar: arréglala en la base, no en la prueba.
 
@@ -1039,8 +1054,26 @@ Esperado: 11 pasadas. Suite entera: **100 pasadas** (96 + 4).
 
 - [ ] **Paso 5: Demostrar que el anclaje es real**
 
-Cambia `texto.rfind('"prices":[', 0, encontrado.start())` por
-`texto.find('"prices":[')` —es decir, «coge la primera»— y ejecuta
+> [!warning] Cuidado con elegir la mutación
+> Cambiar solo `rfind` por `find` **no rompe nada**, y conviene saber por qué: la
+> ventana se ensancha hasta abarcar el bloque de promoción Y el real, y el
+> diccionario por comprensión se queda con el último valor de cada clave, que
+> resulta ser el bueno. El `rfind` del código sí es necesario —acota la ventana
+> al bloque correcto— pero esa mutación concreta no lo demuestra.
+
+Sustituye `_precios_anclados` entera por la versión que encarna el defecto, «lee la
+primera lista de precios de la página»:
+
+```python
+    @staticmethod
+    def _precios_anclados(texto: str, sku: str) -> dict[str, int]:
+        inicio = texto.find('"prices":[')
+        fin = texto.find("]", inicio)
+        pares = _PRECIO_ETIQUETADO.findall(texto[inicio:fin])
+        return {tipo: a_entero(valor) for tipo, valor in pares}
+```
+
+y ejecuta
 `python -m pytest tests/test_falabella.py::test_la_ficha_ancla_los_precios_al_sku_correcto -v`.
 **Debe FALLAR** con 299990 en vez de 419990. Restaura y comprueba que vuelve a pasar. Las dos
 salidas van al informe: sin ellas, esa prueba es decorativa.
@@ -1138,15 +1171,27 @@ def test_una_captura_inferida_que_cumple_se_confirma_y_alerta_con_el_dato_exacto
     assert fila["precio_internet"] == 92000   # el histórico guarda el dato exacto
 
 
-def test_si_la_confirmacion_falla_no_se_alerta_ni_se_escribe(tmp_path):
+def test_si_la_confirmacion_falla_no_se_alerta_ni_se_escribe(tmp_path, caplog):
+    """La ficha no da datos: se avisa y se descarta, sin escribir nada.
+
+    Las dos aserciones sobre el log son las que dan valor a las demás: sin
+    ellas, esta prueba pasaría igual con la guarda de `_confirmada` borrada,
+    porque el `IndexError` resultante lo tragaría el `except` ancho de
+    `_procesar` dejando exactamente el mismo estado observable.
+    """
     con = abrir(tmp_path / "p.db")
     avisos = NotificadorFalso()
     fuente = FuenteConBusquedaInferida([inferida(89990)], [])   # la ficha no devuelve nada
 
-    enviadas = ejecutar_ciclo(con, {"falabella": fuente}, [], busqueda(95000), avisos, CONFIG)
+    with caplog.at_level(logging.WARNING, logger="rastreador"):
+        enviadas = ejecutar_ciclo(con, {"falabella": fuente}, [], busqueda(95000), avisos, CONFIG)
 
     assert enviadas == 0
+    assert fuente.fichas_pedidas == [inferida(89990).url]   # sí se intentó confirmar
     assert con.execute("SELECT COUNT(*) FROM historico_precios").fetchone()[0] == 0
+
+    assert any("la ficha no dio datos" in m for m in caplog.messages)
+    assert not any("no se pudo procesar" in m for m in caplog.messages)
 
 
 def test_el_dato_exacto_deja_de_cumplir_y_no_se_alerta(tmp_path):
@@ -1161,7 +1206,7 @@ def test_el_dato_exacto_deja_de_cumplir_y_no_se_alerta(tmp_path):
     assert avisos.enviados == []
 ```
 
-Añade `from fuentes.base import Captura` a los imports si no está ya.
+Añade `import logging` y `from fuentes.base import Captura` a los imports si no están ya.
 
 - [ ] **Paso 2: Ejecutar y comprobar que fallan**
 
