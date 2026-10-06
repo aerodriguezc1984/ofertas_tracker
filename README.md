@@ -24,7 +24,7 @@ python runner.py
 python -m pytest
 ```
 
-No tocan la red. Para comprobar contra Paris de verdad:
+No tocan la red. Para comprobar contra las tiendas de verdad:
 
 ```
 python herramientas/sonda_paris.py notebook

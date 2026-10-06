@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 
 from fuentes.base import Candidato, Captura, Referencia
 from fuentes.jsonld import FuenteJsonLd
-from nucleo.normalizador import a_captura, a_entero, productos_ld_json
+from nucleo.normalizador import a_captura, a_entero, productos_ld_json, texto
 
 # Las fichas son /falabella-cl/product/<id>/<slug>/<id>
 _SKU_EN_URL = re.compile(r"/product/(\d+)/")
@@ -82,7 +82,7 @@ class Falabella(FuenteJsonLd):
         else:
             return None
 
-        titulo = str(producto.get("name") or "").strip()
+        titulo = texto(producto.get("name"))
         if not titulo:
             return None
 
@@ -106,10 +106,15 @@ class Falabella(FuenteJsonLd):
     def captura_de_ficha(self, html: str, url: str) -> Captura | None:
         """El JSON-LD da título, SKU y stock; el JSON incrustado, los tres precios.
 
-        OJO con el desescapado: el bloque JSON-LD es válido tal cual y
-        desescaparlo lo ROMPE (su nombre lleva `&quot;` dentro de la cadena),
-        mientras que el JSON incrustado de los precios sí viene escapado. Por
-        eso `a_captura` recibe el HTML crudo y el anclaje, el desescapado.
+        El bloque JSON-LD llega VÁLIDO y desescaparlo lo rompería: su nombre
+        lleva un `&quot;` dentro de la cadena. Por eso `a_captura` recibe el HTML
+        crudo.
+
+        El desescapado que sí se aplica abajo es defensivo, no imprescindible:
+        hoy la carga de precios de la ficha llega sin escapar y el patrón casa
+        igual con o sin él. Se mantiene porque Falabella sí escapa el JSON-LD de
+        su página de búsqueda, y una página que cambiara de criterio dejaría de
+        capturarse en silencio.
         """
         base = a_captura(html, url, self.nombre)
         if base is None:
