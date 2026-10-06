@@ -8,11 +8,14 @@ No hereda de `FuenteJsonLd` porque no lee HTML. `Fuente` es un protocolo, no una
 jerarquía, y esta fuente lo cumple por su cuenta.
 """
 
+import json
 import logging
 import re
 import unicodedata
+from urllib.parse import urlencode
 
-from fuentes.base import Captura
+from fuentes.base import Captura, Referencia, Transporte
+from fuentes.transporte import TiendaBloqueada
 from nucleo.normalizador import a_entero
 
 registro = logging.getLogger(__name__)
@@ -86,3 +89,74 @@ def captura_de_entidad(
         ean=str(entidad["ean"]) if entidad.get("ean") else None,
         producto_solotodo=producto.get("id") if isinstance(producto, dict) else None,
     )
+
+
+class SoloTodo:
+    nombre = "solotodo"
+    BASE = "https://api.solotodo.com"
+
+    def __init__(self, transporte: Transporte, excluidas=()) -> None:
+        self._traer = transporte
+        self._excluidas = {identificador_de_tienda(t) for t in excluidas}
+        self._tiendas: dict[int, str] | None = None
+
+    def _catalogo(self) -> dict[int, str] | None:
+        """Los nombres de las tiendas, pedidos una sola vez.
+
+        Se piden de forma perezosa: un ciclo que no use esta fuente no gasta
+        ninguna petición. Devuelve None si la API no responde, y entonces no se
+        puede construir la identidad de ninguna captura.
+        """
+        if self._tiendas is None:
+            try:
+                crudo = self._traer(f"{self.BASE}/stores/")
+            except TiendaBloqueada as error:
+                registro.warning("solotodo: no se pudo leer el catálogo (%s)", error)
+                return None
+            self._tiendas = {t["id"]: t["name"] for t in json.loads(crudo)}
+        return self._tiendas
+
+    def buscar(self, termino: str, limite: int) -> list[Captura]:
+        tiendas = self._catalogo()
+        if tiendas is None:
+            return []
+
+        consulta = urlencode({"search": termino, "is_active": "true"})
+        url = f"{self.BASE}/entities/?{consulta}"
+        try:
+            datos = json.loads(self._traer(url))
+        except TiendaBloqueada as error:
+            registro.warning("solotodo: búsqueda bloqueada para %r (%s)", termino, error)
+            return []
+
+        capturas: list[Captura] = []
+        for entidad in datos.get("results") or []:
+            if len(capturas) >= limite:
+                break
+            captura = captura_de_entidad(entidad, tiendas, self._excluidas)
+            if captura is not None:
+                capturas.append(captura)
+        return capturas
+
+    def obtener(self, referencias: list[Referencia]) -> list[Captura]:
+        tiendas = self._catalogo()
+        if tiendas is None:
+            return []
+
+        capturas: list[Captura] = []
+        for referencia in referencias:
+            try:
+                entidad = json.loads(self._traer(referencia.url))
+            except TiendaBloqueada as error:
+                registro.warning(
+                    "solotodo: no se pudo leer %s (%s)", referencia.url, error
+                )
+                continue
+            captura = captura_de_entidad(entidad, tiendas, self._excluidas)
+            if captura is None:
+                registro.warning(
+                    "solotodo: sin datos utilizables en %s", referencia.url
+                )
+                continue
+            capturas.append(captura)
+        return capturas

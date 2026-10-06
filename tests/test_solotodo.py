@@ -88,3 +88,87 @@ def test_una_entidad_incompleta_se_descarta(roto):
     """
     entidad = dict(ENTIDADES[0], **roto)
     assert captura_de_entidad(entidad, TIENDAS, EXCLUIDAS) is None
+
+
+from fuentes.base import Referencia
+from fuentes.solotodo import SoloTodo
+from fuentes.transporte import TiendaBloqueada
+
+CATALOGO = json.dumps([{"id": 30, "name": "AbcDin"}, {"id": 9, "name": "Falabella"}])
+BUSQUEDA = json.dumps({"count": 2, "results": [ENTIDADES[0], ENTIDADES[2]]})
+
+
+def transporte_de(mapa):
+    pedidas = []
+
+    def traer(url):
+        pedidas.append(url)
+        if url not in mapa:
+            raise TiendaBloqueada(f"sin respuesta para {url}")
+        return mapa[url]
+
+    return traer, pedidas
+
+
+def test_la_busqueda_pide_el_catalogo_una_vez_y_luego_no():
+    """El catálogo de tiendas no cambia dentro de un ciclo."""
+    traer, pedidas = transporte_de({
+        "https://api.solotodo.com/stores/": CATALOGO,
+        "https://api.solotodo.com/entities/?search=notebook&is_active=true": BUSQUEDA,
+    })
+    fuente = SoloTodo(traer, excluidas=["paris", "falabella"])
+
+    fuente.buscar("notebook", limite=5)
+    fuente.buscar("notebook", limite=5)
+
+    assert pedidas.count("https://api.solotodo.com/stores/") == 1
+
+
+def test_la_busqueda_descarta_las_tiendas_excluidas():
+    traer, _ = transporte_de({
+        "https://api.solotodo.com/stores/": CATALOGO,
+        "https://api.solotodo.com/entities/?search=notebook&is_active=true": BUSQUEDA,
+    })
+    capturas = SoloTodo(traer, excluidas=["paris", "falabella"]).buscar("notebook", limite=5)
+
+    assert [c.tienda for c in capturas] == ["abcdin"]
+
+
+def test_la_busqueda_respeta_el_limite():
+    muchas = json.dumps({"count": 2, "results": [ENTIDADES[0], ENTIDADES[0]]})
+    traer, _ = transporte_de({
+        "https://api.solotodo.com/stores/": CATALOGO,
+        "https://api.solotodo.com/entities/?search=notebook&is_active=true": muchas,
+    })
+    assert len(SoloTodo(traer).buscar("notebook", limite=1)) == 1
+
+
+def test_el_termino_se_codifica():
+    traer, pedidas = transporte_de({"https://api.solotodo.com/stores/": CATALOGO})
+    SoloTodo(traer).buscar("notebook 16 gb", limite=5)
+    assert pedidas[-1] == (
+        "https://api.solotodo.com/entities/?search=notebook+16+gb&is_active=true"
+    )
+
+
+def test_un_catalogo_inalcanzable_deja_la_busqueda_en_vacio():
+    traer, _ = transporte_de({})   # ni siquiera el catálogo responde
+    assert SoloTodo(traer).buscar("notebook", limite=5) == []
+
+
+def test_una_busqueda_bloqueada_devuelve_vacio():
+    traer, _ = transporte_de({"https://api.solotodo.com/stores/": CATALOGO})
+    assert SoloTodo(traer).buscar("notebook", limite=5) == []
+
+
+def test_obtener_pide_cada_entidad_y_una_caida_no_tumba_las_demas():
+    traer, pedidas = transporte_de({
+        "https://api.solotodo.com/stores/": CATALOGO,
+        "https://api.solotodo.com/entities/1379496/": json.dumps(ENTIDADES[0]),
+    })
+    capturas = SoloTodo(traer).obtener([
+        Referencia("abcdin", "https://api.solotodo.com/entities/999999/"),
+        Referencia("abcdin", "https://api.solotodo.com/entities/1379496/"),
+    ])
+    assert len(capturas) == 1
+    assert capturas[0].sku_externo == "AD-100"
