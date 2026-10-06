@@ -224,7 +224,17 @@ def ejecutar_ciclo(con, fuentes, vigilados, busquedas, notificador, config) -> i
                 [Referencia(tienda=vigilado["tienda"], url=vigilado["url"])]
             )
         except Exception as error:  # noqa: BLE001
-            registro.warning("fuente %s falló: %s", fuente.nombre, error)
+            # Con traza: aquí escapa cualquier excepción de la fuente (un
+            # `JSONDecodeError` si la API devuelve HTML, por ejemplo), y sin el
+            # tipo y el fichero un fallo nuestro se confunde con un tropiezo de
+            # la tienda. El sujeto es la URL y la tienda vigiladas, no
+            # `fuente.nombre`: con una fuente compartida como solotodo, el
+            # nombre no dice qué tienda falló.
+            registro.warning(
+                "no se pudo capturar %s (tienda %s) con la fuente %s: %s",
+                vigilado["url"], vigilado["tienda"], fuente.nombre, error,
+                exc_info=True,
+            )
             continue
         enviadas += _procesar(con, capturas, vigilado["reglas"], notificador, config, fuente)
 
@@ -240,7 +250,14 @@ def ejecutar_ciclo(con, fuentes, vigilados, busquedas, notificador, config) -> i
         try:
             capturas = fuente.buscar(busqueda["termino"], limite)
         except Exception as error:  # noqa: BLE001
-            registro.warning("búsqueda en %s falló: %s", fuente.nombre, error)
+            # Con traza, por el mismo motivo que en el bucle de vigilados: el
+            # sujeto es el término y la tienda de la búsqueda, no
+            # `fuente.nombre`.
+            registro.warning(
+                "no se pudo buscar %r (tienda %s) con la fuente %s: %s",
+                busqueda["termino"], busqueda["tienda"], fuente.nombre, error,
+                exc_info=True,
+            )
             continue
         enviadas += _procesar(con, capturas, busqueda["reglas"], notificador, config, fuente)
 
@@ -279,7 +296,7 @@ def main() -> int:
         "falabella": Falabella(transporte),
         "solotodo": SoloTodo(
             transporte,
-            excluidas=config.get("solotodo", {}).get("tiendas_excluidas", []),
+            excluidas=(config.get("solotodo") or {}).get("tiendas_excluidas", []),
         ),
     }
 

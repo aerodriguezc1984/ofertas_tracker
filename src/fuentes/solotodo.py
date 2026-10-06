@@ -70,7 +70,11 @@ def captura_de_entidad(
     sku = str(entidad.get("sku") or "").strip()
     titulo = str(entidad.get("name") or "").strip()
     url = str(entidad.get("external_url") or "").strip()
-    if interno is None or not sku or not titulo or not url:
+    # `tienda` entra en la misma guarda que sku/titulo/url: un nombre de tienda
+    # sin ningún carácter ASCII alfanumérico normaliza a "", y ese "" nunca
+    # coincidiría con `excluidas` y encima mezclaría en una misma identidad
+    # (tienda, sku_externo) a dos tiendas distintas que degeneraran igual.
+    if interno is None or not sku or not titulo or not url or not tienda:
         registro.warning("solotodo: entidad %s incompleta", entidad.get("id"))
         return None
 
@@ -113,7 +117,16 @@ class SoloTodo:
             except TiendaBloqueada as error:
                 registro.warning("solotodo: no se pudo leer el catálogo (%s)", error)
                 return None
-            self._tiendas = {t["id"]: t["name"] for t in json.loads(crudo)}
+            tiendas = {t["id"]: t["name"] for t in json.loads(crudo)}
+            if not tiendas:
+                # Un catálogo vacío no es un éxito: cachearlo dejaría cada
+                # entidad cayendo en «tienda desconocida» el resto del ciclo,
+                # apuntando al sitio equivocado (el catálogo, no las
+                # entidades). Se trata como el fallo de red: sin caché, para
+                # que se reintente en la próxima llamada.
+                registro.warning("solotodo: el catálogo de tiendas vino vacío")
+                return None
+            self._tiendas = tiendas
         return self._tiendas
 
     def buscar(self, termino: str, limite: int) -> list[Captura]:
@@ -130,6 +143,10 @@ class SoloTodo:
             return []
 
         capturas: list[Captura] = []
+        # El límite cuenta capturas ÚTILES, no entidades visitadas: la página de
+        # resultados ya está descargada entera, así que recorrerla de más no
+        # cuesta una petición extra. En `FuenteJsonLd`, en cambio, cada ficha
+        # cuesta su propia petición y por eso ahí el corte es previo a pedirla.
         for entidad in datos.get("results") or []:
             if len(capturas) >= limite:
                 break
@@ -143,6 +160,9 @@ class SoloTodo:
         if tiendas is None:
             return []
 
+        # Aquí la identidad es el id de entidad que ya va en la URL (p. ej.
+        # `.../entities/1379496/`), así que `Referencia.sku_externo` se ignora
+        # a propósito; Paris y Falabella sí lo honran porque su URL no lo trae.
         capturas: list[Captura] = []
         for referencia in referencias:
             try:

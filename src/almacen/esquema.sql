@@ -1,3 +1,7 @@
+-- Toda columna que se añada aquí hay que añadirla también a mano en
+-- `COLUMNAS_NUEVAS` (almacen/conexion.py), para que una base ya creada la
+-- reciba por migración; `CREATE TABLE IF NOT EXISTS` no la lleva a una base
+-- existente. Ninguna prueba lo vigila: todas crean la base desde cero.
 CREATE TABLE IF NOT EXISTS productos (
     id              INTEGER PRIMARY KEY,
     tienda          TEXT    NOT NULL,

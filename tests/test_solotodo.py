@@ -8,7 +8,7 @@ from fuentes.solotodo import captura_de_entidad, identificador_de_tienda
 FIXTURES = Path(__file__).parent / "fixtures"
 ENTIDADES = json.loads((FIXTURES / "solotodo_entidades.json").read_text(encoding="utf-8"))
 
-TIENDAS = {30: "AbcDin", 9: "Falabella", 77: "PC Factory"}
+TIENDAS = {30: "AbcDin", 9: "Falabella", 77: "PC Factory", 55: "★★★"}
 EXCLUIDAS = {"paris", "falabella"}
 
 
@@ -77,6 +77,7 @@ def test_una_entidad_sin_producto_normalizado_no_estalla():
         {"sku": ""},
         {"name": ""},
         {"external_url": ""},
+        {"store": 55},   # «★★★» normaliza a "": sin ningún carácter alfanumérico
     ],
 )
 def test_una_entidad_incompleta_se_descarta(roto):
@@ -84,7 +85,10 @@ def test_una_entidad_incompleta_se_descarta(roto):
 
     Es la única rama de descarte que las otras pruebas no alcanzan: las demás
     entidades de la fixture se paran antes, en el registro activo, la exclusión
-    o la tienda desconocida.
+    o la tienda desconocida. El último caso cubre una tienda distinta: un
+    nombre sin ningún carácter ASCII alfanumérico normaliza a "", que nunca
+    coincide con `excluidas` y mezclaría la identidad de dos tiendas así de
+    degeneradas si no se rechazara aquí.
     """
     entidad = dict(ENTIDADES[0], **roto)
     assert captura_de_entidad(entidad, TIENDAS, EXCLUIDAS) is None
@@ -195,3 +199,27 @@ def test_un_catalogo_que_falla_se_reintenta_en_la_llamada_siguiente():
     assert fuente.buscar("notebook", limite=5) == []          # el catálogo falló
     assert [c.tienda for c in fuente.buscar("notebook", limite=5)] == ["abcdin"]
     assert len(intentos) == 2                                  # sí se reintentó
+
+
+def test_un_catalogo_vacio_no_se_cachea_y_se_reintenta():
+    """Un `[]` en `/stores/` no es un fallo de transporte, así que no cae en el
+    `except TiendaBloqueada`, pero tampoco es un éxito: cachear `{}` dejaría
+    cada entidad cayendo en «tienda desconocida» el resto del ciclo, apuntando
+    al catálogo vacío como si fuera el problema de las entidades.
+    """
+    catalogo_vacio = json.dumps([])
+    intentos = []
+
+    def traer(url):
+        if url == "https://api.solotodo.com/stores/":
+            intentos.append(url)
+            if len(intentos) == 1:
+                return catalogo_vacio
+            return CATALOGO
+        return BUSQUEDA
+
+    fuente = SoloTodo(traer, excluidas=["paris", "falabella"])
+
+    assert fuente.buscar("notebook", limite=5) == []           # catálogo vacío
+    assert [c.tienda for c in fuente.buscar("notebook", limite=5)] == ["abcdin"]
+    assert len(intentos) == 2                                   # se pidió dos veces

@@ -8,6 +8,14 @@ ESQUEMA = Path(__file__).parent / "esquema.sql"
 # Columnas añadidas después de la primera versión del esquema. `CREATE TABLE IF
 # NOT EXISTS` no las lleva a una base que ya existe, así que hay que añadirlas a
 # mano. Formato: (tabla, columna, declaración).
+#
+# Disciplina pura, sin red de seguridad: toda prueba crea la base desde cero,
+# así que ninguna vigila que una columna nueva del esquema también se añada
+# aquí. Y la declaración tiene un límite real: `ALTER TABLE ... ADD COLUMN` no
+# admite `UNIQUE`, y solo admite `NOT NULL` si lleva `DEFAULT` —comprobado: sin
+# `DEFAULT` se acepta sobre una tabla vacía y se rechaza sobre una con filas—,
+# así que una declaración mal formada pasaría la suite entera y solo
+# reventaría sobre la base real del usuario.
 COLUMNAS_NUEVAS = [
     ("productos", "producto_solotodo", "INTEGER"),
 ]
