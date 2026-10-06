@@ -1,3 +1,5 @@
+import logging
+
 from almacen.conexion import abrir
 from fuentes.base import Captura
 from nucleo.evaluador import Reglas
@@ -206,6 +208,142 @@ def test_una_entrada_sin_clave_obligatoria_se_salta_sin_abortar(tmp_path):
     assert len(vigilados) == 1
     assert vigilados[0]["url"].endswith("bueno-S1.html")
     assert busquedas == []
+
+
+class FuenteConBusquedaInferida:
+    """Devuelve capturas inferidas al buscar y exactas al pedir la ficha."""
+
+    nombre = "falabella"
+
+    def __init__(self, inferidas, exactas):
+        self.inferidas = inferidas
+        self.exactas = exactas
+        self.fichas_pedidas = []
+
+    def obtener(self, referencias):
+        self.fichas_pedidas.extend(r.url for r in referencias)
+        return [c for c in self.exactas if any(c.url == r.url for r in referencias)]
+
+    def buscar(self, termino, limite):
+        return list(self.inferidas)
+
+
+def inferida(precio, sku="F1"):
+    return Captura(
+        tienda="falabella", sku_externo=sku, titulo="Notebook",
+        url=f"https://www.falabella.com/falabella-cl/product/{sku}/x/{sku}",
+        precio_internet=precio, precios_etiquetados=False,
+    )
+
+
+def exacta(precio, sku="F1"):
+    return Captura(
+        tienda="falabella", sku_externo=sku, titulo="Notebook",
+        url=f"https://www.falabella.com/falabella-cl/product/{sku}/x/{sku}",
+        precio_internet=precio,
+    )
+
+
+def exacta_no_etiquetada(precio, sku="F1"):
+    """Como `exacta`, pero la ficha tampoco trae precios etiquetados.
+
+    Para la próxima tienda (un catálogo como SoloTodo), donde la ficha puede
+    confirmar sin etiquetar nada.
+    """
+    return Captura(
+        tienda="falabella", sku_externo=sku, titulo="Notebook",
+        url=f"https://www.falabella.com/falabella-cl/product/{sku}/x/{sku}",
+        precio_internet=precio, precios_etiquetados=False,
+    )
+
+
+def busqueda(tope):
+    return [{"tienda": "falabella", "termino": "notebook", "reglas": Reglas(precio_maximo=tope)}]
+
+
+def test_una_captura_inferida_que_no_cumple_no_escribe_nada(tmp_path):
+    """Ni alta, ni histórico, ni ficha: se descarta en el filtro barato."""
+    con = abrir(tmp_path / "p.db")
+    avisos = NotificadorFalso()
+    fuente = FuenteConBusquedaInferida([inferida(500000)], [exacta(500000)])
+
+    enviadas = ejecutar_ciclo(con, {"falabella": fuente}, [], busqueda(100000), avisos, CONFIG)
+
+    assert enviadas == 0
+    assert fuente.fichas_pedidas == []
+    assert con.execute("SELECT COUNT(*) FROM productos").fetchone()[0] == 0
+    assert con.execute("SELECT COUNT(*) FROM historico_precios").fetchone()[0] == 0
+
+
+def test_una_captura_inferida_que_cumple_se_confirma_y_alerta_con_el_dato_exacto(tmp_path):
+    con = abrir(tmp_path / "p.db")
+    avisos = NotificadorFalso()
+    # La inferida dice 89990; la ficha dice 92000. Manda la ficha.
+    fuente = FuenteConBusquedaInferida([inferida(89990)], [exacta(92000)])
+
+    enviadas = ejecutar_ciclo(con, {"falabella": fuente}, [], busqueda(95000), avisos, CONFIG)
+
+    assert enviadas == 1
+    assert fuente.fichas_pedidas == [inferida(89990).url]   # exactamente una confirmación
+    assert avisos.enviados[-1][1].precio == 92000
+    fila = con.execute("SELECT precio_internet FROM historico_precios").fetchone()
+    assert fila["precio_internet"] == 92000   # el histórico guarda el dato exacto
+
+
+def test_si_la_confirmacion_falla_no_se_alerta_ni_se_escribe(tmp_path, caplog):
+    """La ficha no da datos: se avisa y se descarta, sin escribir nada.
+
+    Las dos aserciones sobre el log son las que dan valor a las demás: sin
+    ellas, esta prueba pasaría igual con la guarda de `_confirmada` borrada,
+    porque el `IndexError` resultante lo tragaría el `except` ancho de
+    `_procesar` dejando el mismo estado observable.
+    """
+    con = abrir(tmp_path / "p.db")
+    avisos = NotificadorFalso()
+    fuente = FuenteConBusquedaInferida([inferida(89990)], [])   # la ficha no devuelve nada
+
+    with caplog.at_level(logging.WARNING, logger="rastreador"):
+        enviadas = ejecutar_ciclo(con, {"falabella": fuente}, [], busqueda(95000), avisos, CONFIG)
+
+    assert enviadas == 0
+    assert fuente.fichas_pedidas == [inferida(89990).url]   # sí se intentó confirmar
+    assert con.execute("SELECT COUNT(*) FROM historico_precios").fetchone()[0] == 0
+
+    assert any("la ficha no dio datos" in m for m in caplog.messages)
+    assert not any("no se pudo procesar" in m for m in caplog.messages)
+
+
+def test_el_dato_exacto_deja_de_cumplir_y_no_se_alerta(tmp_path):
+    """La inferida prometía 89990; la ficha dice 120000. No hay oferta."""
+    con = abrir(tmp_path / "p.db")
+    avisos = NotificadorFalso()
+    fuente = FuenteConBusquedaInferida([inferida(89990)], [exacta(120000)])
+
+    enviadas = ejecutar_ciclo(con, {"falabella": fuente}, [], busqueda(95000), avisos, CONFIG)
+
+    assert enviadas == 0
+    assert fuente.fichas_pedidas == [inferida(89990).url]   # se confirmó de verdad
+    assert avisos.enviados == []
+
+
+def test_si_la_ficha_tampoco_trae_precios_etiquetados_no_se_alerta_ni_se_escribe(tmp_path):
+    """El orquestador, no la tienda, debe exigir el etiquetado de la confirmación.
+
+    Hoy ninguna tienda real produce este caso (Falabella marca `True` a mano y
+    Paris nunca pasa por aquí), pero la próxima fuente (un catálogo como
+    SoloTodo) sí podría devolver una ficha inferida. Sin esta guarda en
+    `_confirmada`, ese precio adivinado entraría al histórico y podría alertar.
+    """
+    con = abrir(tmp_path / "p.db")
+    avisos = NotificadorFalso()
+    fuente = FuenteConBusquedaInferida([inferida(89990)], [exacta_no_etiquetada(89990)])
+
+    enviadas = ejecutar_ciclo(con, {"falabella": fuente}, [], busqueda(95000), avisos, CONFIG)
+
+    assert enviadas == 0
+    assert fuente.fichas_pedidas == [inferida(89990).url]   # sí se intentó confirmar
+    assert con.execute("SELECT COUNT(*) FROM productos").fetchone()[0] == 0
+    assert con.execute("SELECT COUNT(*) FROM historico_precios").fetchone()[0] == 0
 
 
 def test_el_descuento_se_mide_contra_el_minimo_anterior_a_la_captura(tmp_path):

@@ -48,7 +48,7 @@ def registrar_si_cambio(
     """
     ultima = con.execute(
         """
-        SELECT precio_internet, precio_normal, precio_tarjeta, disponible
+        SELECT precio_internet, precio_normal, precio_tarjeta, tarjeta_asociada, disponible
           FROM historico_precios
          WHERE producto_id = ?
          ORDER BY capturado_el DESC, id DESC
@@ -61,6 +61,7 @@ def registrar_si_cambio(
         captura.precio_internet,
         captura.precio_normal,
         captura.precio_tarjeta,
+        captura.tarjeta,
         int(captura.disponible),
     )
     if ultima is not None and tuple(ultima) == nuevo:

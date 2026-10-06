@@ -27,6 +27,7 @@ from avisos.telegram import (                      # noqa: E402
     TelegramMalConfigurado,
 )
 from fuentes.base import Referencia                # noqa: E402
+from fuentes.falabella import Falabella            # noqa: E402
 from fuentes.paris import Paris                    # noqa: E402
 from fuentes.transporte import crear_transporte    # noqa: E402
 from nucleo.evaluador import Reglas, evaluar       # noqa: E402
@@ -96,7 +97,41 @@ def cargar_lista_deseos(ruta: Path | str) -> tuple[list[dict], list[dict]]:
     return vigilados, busquedas
 
 
-def _procesar(con, capturas, reglas, notificador, config) -> int:
+def _confirmada(captura, fuente):
+    """La captura leída de la ficha, o None si no se pudo leer.
+
+    Un precio inferido del orden en que la tienda lista sus ofertas no puede
+    disparar una alerta —mandaría al usuario a pagar más de lo que decía el
+    aviso— ni entrar en el histórico, donde contaminaría el mínimo que sostiene
+    todas las alertas de descuento.
+    """
+    referencia = Referencia(
+        tienda=captura.tienda, url=captura.url, sku_externo=captura.sku_externo
+    )
+    try:
+        exactas = fuente.obtener([referencia])
+    except Exception as error:  # noqa: BLE001
+        registro.warning("no se pudo confirmar %s: %s", captura.url, error, exc_info=True)
+        return None
+
+    if not exactas:
+        registro.warning("no se pudo confirmar %s: la ficha no dio datos", captura.url)
+        return None
+
+    exacta = exactas[0]
+    if not exacta.precios_etiquetados:
+        # La confirmación existe para obtener un precio etiquetado. Si la ficha
+        # tampoco lo trae, no hay nada que confirmar: antes ninguna alerta que
+        # una basada en un precio adivinado.
+        registro.warning(
+            "no se pudo confirmar %s: la ficha tampoco trae precios etiquetados",
+            captura.url,
+        )
+        return None
+    return exacta
+
+
+def _procesar(con, capturas, reglas, notificador, config, fuente) -> int:
     """Guarda las capturas, evalúa y avisa. Devuelve cuántas alertas mandó."""
     ventana = config["historico"]["ventana_minimo_dias"]
     dias_minimos = config["historico"]["dias_minimos_para_descuento"]
@@ -105,6 +140,19 @@ def _procesar(con, capturas, reglas, notificador, config) -> int:
     enviadas = 0
     for captura in capturas:
         try:
+            if not captura.precios_etiquetados:
+                # Filtro barato: se evalúa el dato inferido SIN escribir nada.
+                # Si no promete una oferta, se descarta sin gastar una petición.
+                # Sin histórico, `evaluar` solo puede responder a reglas de
+                # precio absoluto. Un producto descubierto con una regla de
+                # solo descuento se descarta, y es correcto: tampoco podría
+                # alertar, porque la guarda de arranque en frío lo impediría.
+                if evaluar(captura, reglas, None, 0.0, dias_minimos) is None:
+                    continue
+                captura = _confirmada(captura, fuente)
+                if captura is None:
+                    continue
+
             producto_id = alta_o_actualiza_producto(con, captura)
 
             # El mínimo se consulta ANTES de insertar la captura de hoy: si no,
@@ -164,7 +212,7 @@ def ejecutar_ciclo(con, fuentes, vigilados, busquedas, notificador, config) -> i
         except Exception as error:  # noqa: BLE001
             registro.warning("fuente %s falló: %s", fuente.nombre, error)
             continue
-        enviadas += _procesar(con, capturas, vigilado["reglas"], notificador, config)
+        enviadas += _procesar(con, capturas, vigilado["reglas"], notificador, config, fuente)
 
     limite = config.get("ejecucion", {}).get("limite_por_busqueda", 15)
     for busqueda in busquedas:
@@ -177,7 +225,7 @@ def ejecutar_ciclo(con, fuentes, vigilados, busquedas, notificador, config) -> i
         except Exception as error:  # noqa: BLE001
             registro.warning("búsqueda en %s falló: %s", fuente.nombre, error)
             continue
-        enviadas += _procesar(con, capturas, busqueda["reglas"], notificador, config)
+        enviadas += _procesar(con, capturas, busqueda["reglas"], notificador, config, fuente)
 
     return enviadas
 
@@ -209,7 +257,7 @@ def main() -> int:
         reintentos=config["ejecucion"]["reintentos"],
         pausa=tuple(config["ejecucion"]["espera_entre_peticiones_seg"]),
     )
-    fuentes = {"paris": Paris(transporte)}
+    fuentes = {"paris": Paris(transporte), "falabella": Falabella(transporte)}
 
     try:
         notificador = construir_notificador(config)
