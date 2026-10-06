@@ -9,3 +9,9 @@ alertas:
   canal: archivo          # archivo | telegram
   cooldown_dias: 5
   ruta_archivo: logs/alertas.jsonl
+solotodo:
+  # Las tiendas que ya cubrimos con un adaptador directo. SoloTodo las ignora:
+  # su `external_url` es el mismo que el nuestro, así que caerían en la misma
+  # fila discrepando en el precio de tarjeta, y el histórico crecería una fila
+  # por ciclo sin que nada hubiera cambiado.
+  tiendas_excluidas: [paris, falabella]

@@ -29,6 +29,7 @@ from avisos.telegram import (                      # noqa: E402
 from fuentes.base import Referencia                # noqa: E402
 from fuentes.falabella import Falabella            # noqa: E402
 from fuentes.paris import Paris                    # noqa: E402
+from fuentes.solotodo import SoloTodo              # noqa: E402
 from fuentes.transporte import crear_transporte    # noqa: E402
 from nucleo.evaluador import Reglas, evaluar       # noqa: E402
 from nucleo.frecuencia import debe_notificar       # noqa: E402
@@ -273,7 +274,14 @@ def main() -> int:
         reintentos=config["ejecucion"]["reintentos"],
         pausa=tuple(config["ejecucion"]["espera_entre_peticiones_seg"]),
     )
-    fuentes = {"paris": Paris(transporte), "falabella": Falabella(transporte)}
+    fuentes = {
+        "paris": Paris(transporte),
+        "falabella": Falabella(transporte),
+        "solotodo": SoloTodo(
+            transporte,
+            excluidas=config.get("solotodo", {}).get("tiendas_excluidas", []),
+        ),
+    }
 
     try:
         notificador = construir_notificador(config)
