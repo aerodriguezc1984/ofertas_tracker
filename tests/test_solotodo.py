@@ -172,3 +172,26 @@ def test_obtener_pide_cada_entidad_y_una_caida_no_tumba_las_demas():
     ])
     assert len(capturas) == 1
     assert capturas[0].sku_externo == "AD-100"
+
+
+def test_un_catalogo_que_falla_se_reintenta_en_la_llamada_siguiente():
+    """Cachear el fallo dejaría la fuente muda el resto del ciclo.
+
+    `_catalogo` solo guarda el catálogo cuando lo consigue, así que un tropiezo
+    cuesta una petición perdida y no la fuente entera.
+    """
+    intentos = []
+
+    def traer(url):
+        if url == "https://api.solotodo.com/stores/":
+            intentos.append(url)
+            if len(intentos) == 1:
+                raise TiendaBloqueada("503 la primera vez")
+            return CATALOGO
+        return BUSQUEDA
+
+    fuente = SoloTodo(traer, excluidas=["paris", "falabella"])
+
+    assert fuente.buscar("notebook", limite=5) == []          # el catálogo falló
+    assert [c.tienda for c in fuente.buscar("notebook", limite=5)] == ["abcdin"]
+    assert len(intentos) == 2                                  # sí se reintentó
