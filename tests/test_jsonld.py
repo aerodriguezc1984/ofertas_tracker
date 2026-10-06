@@ -107,3 +107,32 @@ def test_una_ficha_bloqueada_no_tumba_las_demas():
 def test_una_ficha_sin_datos_utilizables_se_descarta():
     fuente = FuenteDePrueba(lambda url: "vacia", [])
     assert fuente.obtener([Referencia("prueba", "https://t.cl/a.html")]) == []
+
+
+def test_una_ficha_que_dice_ser_otro_sku_se_descarta():
+    """La base, no solo Falabella, debe comprobar la identidad de la ficha.
+
+    `captura_de_ficha` siempre devuelve el sku "S1" (ver `FuenteDePrueba`); si
+    la `Referencia` pide otro sku, la ficha miente sobre su identidad y debe
+    descartarse, igual que una sin datos utilizables.
+    """
+    fuente = FuenteDePrueba(lambda url: "ficha", [])
+    capturas = fuente.obtener(
+        [Referencia("prueba", "https://t.cl/a.html", sku_externo="OTRO")]
+    )
+    assert capturas == []
+
+
+def test_una_ficha_cuyo_sku_coincide_con_la_referencia_se_acepta():
+    fuente = FuenteDePrueba(lambda url: "ficha", [])
+    capturas = fuente.obtener(
+        [Referencia("prueba", "https://t.cl/a.html", sku_externo="S1")]
+    )
+    assert len(capturas) == 1
+
+
+def test_una_referencia_sin_sku_no_exige_coincidencia():
+    """Paris nunca rellena `sku_externo`: la guarda no debe afectarla."""
+    fuente = FuenteDePrueba(lambda url: "ficha", [])
+    capturas = fuente.obtener([Referencia("prueba", "https://t.cl/a.html")])
+    assert len(capturas) == 1

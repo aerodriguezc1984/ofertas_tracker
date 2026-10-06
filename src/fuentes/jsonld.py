@@ -60,6 +60,22 @@ class FuenteJsonLd:
                     "%s: sin datos utilizables en %s", self.nombre, referencia.url
                 )
                 continue
+
+            if (
+                referencia.sku_externo is not None
+                and captura.sku_externo != referencia.sku_externo
+            ):
+                # La ficha dice ser otro producto. Guardarla bajo esta URL
+                # mezclaría dos artículos en una sola fila del histórico.
+                registro.warning(
+                    "%s: %s dice ser el producto %r y no %r",
+                    self.nombre,
+                    referencia.url,
+                    captura.sku_externo,
+                    referencia.sku_externo,
+                )
+                continue
+
             capturas.append(captura)
         return capturas
 

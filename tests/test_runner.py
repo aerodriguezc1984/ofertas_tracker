@@ -244,6 +244,19 @@ def exacta(precio, sku="F1"):
     )
 
 
+def exacta_no_etiquetada(precio, sku="F1"):
+    """Como `exacta`, pero la ficha tampoco trae precios etiquetados.
+
+    Para la próxima tienda (un catálogo como SoloTodo), donde la ficha puede
+    confirmar sin etiquetar nada.
+    """
+    return Captura(
+        tienda="falabella", sku_externo=sku, titulo="Notebook",
+        url=f"https://www.falabella.com/falabella-cl/product/{sku}/x/{sku}",
+        precio_internet=precio, precios_etiquetados=False,
+    )
+
+
 def busqueda(tope):
     return [{"tienda": "falabella", "termino": "notebook", "reglas": Reglas(precio_maximo=tope)}]
 
@@ -311,6 +324,26 @@ def test_el_dato_exacto_deja_de_cumplir_y_no_se_alerta(tmp_path):
     assert enviadas == 0
     assert fuente.fichas_pedidas == [inferida(89990).url]   # se confirmó de verdad
     assert avisos.enviados == []
+
+
+def test_si_la_ficha_tampoco_trae_precios_etiquetados_no_se_alerta_ni_se_escribe(tmp_path):
+    """El orquestador, no la tienda, debe exigir el etiquetado de la confirmación.
+
+    Hoy ninguna tienda real produce este caso (Falabella marca `True` a mano y
+    Paris nunca pasa por aquí), pero la próxima fuente (un catálogo como
+    SoloTodo) sí podría devolver una ficha inferida. Sin esta guarda en
+    `_confirmada`, ese precio adivinado entraría al histórico y podría alertar.
+    """
+    con = abrir(tmp_path / "p.db")
+    avisos = NotificadorFalso()
+    fuente = FuenteConBusquedaInferida([inferida(89990)], [exacta_no_etiquetada(89990)])
+
+    enviadas = ejecutar_ciclo(con, {"falabella": fuente}, [], busqueda(95000), avisos, CONFIG)
+
+    assert enviadas == 0
+    assert fuente.fichas_pedidas == [inferida(89990).url]   # sí se intentó confirmar
+    assert con.execute("SELECT COUNT(*) FROM productos").fetchone()[0] == 0
+    assert con.execute("SELECT COUNT(*) FROM historico_precios").fetchone()[0] == 0
 
 
 def test_el_descuento_se_mide_contra_el_minimo_anterior_a_la_captura(tmp_path):

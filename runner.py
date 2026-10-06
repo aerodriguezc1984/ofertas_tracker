@@ -117,7 +117,18 @@ def _confirmada(captura, fuente):
     if not exactas:
         registro.warning("no se pudo confirmar %s: la ficha no dio datos", captura.url)
         return None
-    return exactas[0]
+
+    exacta = exactas[0]
+    if not exacta.precios_etiquetados:
+        # La confirmación existe para obtener un precio etiquetado. Si la ficha
+        # tampoco lo trae, no hay nada que confirmar: antes ninguna alerta que
+        # una basada en un precio adivinado.
+        registro.warning(
+            "no se pudo confirmar %s: la ficha tampoco trae precios etiquetados",
+            captura.url,
+        )
+        return None
+    return exacta
 
 
 def _procesar(con, capturas, reglas, notificador, config, fuente) -> int:
