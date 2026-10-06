@@ -80,7 +80,12 @@ def cargar_lista_deseos(ruta: Path | str) -> tuple[list[dict], list[dict]]:
         if reglas is None:
             continue
         vigilados.append(
-            {"tienda": entrada["tienda"], "url": entrada["url"], "reglas": reglas}
+            {
+                "tienda": entrada["tienda"],
+                "fuente": entrada.get("fuente") or entrada["tienda"],
+                "url": entrada["url"],
+                "reglas": reglas,
+            }
         )
 
     busquedas = []
@@ -91,7 +96,12 @@ def cargar_lista_deseos(ruta: Path | str) -> tuple[list[dict], list[dict]]:
         if reglas is None:
             continue
         busquedas.append(
-            {"tienda": entrada["tienda"], "termino": entrada["termino"], "reglas": reglas}
+            {
+                "tienda": entrada["tienda"],
+                "fuente": entrada.get("fuente") or entrada["tienda"],
+                "termino": entrada["termino"],
+                "reglas": reglas,
+            }
         )
 
     return vigilados, busquedas
@@ -201,9 +211,12 @@ def ejecutar_ciclo(con, fuentes, vigilados, busquedas, notificador, config) -> i
     enviadas = 0
 
     for vigilado in vigilados:
-        fuente = fuentes.get(vigilado["tienda"])
+        nombre_fuente = vigilado.get("fuente") or vigilado["tienda"]
+        fuente = fuentes.get(nombre_fuente)
         if fuente is None:
-            registro.warning("sin fuente para la tienda %r", vigilado["tienda"])
+            registro.warning(
+                "sin fuente %r para la tienda %r", nombre_fuente, vigilado["tienda"]
+            )
             continue
         try:
             capturas = fuente.obtener(
@@ -216,9 +229,12 @@ def ejecutar_ciclo(con, fuentes, vigilados, busquedas, notificador, config) -> i
 
     limite = config.get("ejecucion", {}).get("limite_por_busqueda", 15)
     for busqueda in busquedas:
-        fuente = fuentes.get(busqueda["tienda"])
+        nombre_fuente = busqueda.get("fuente") or busqueda["tienda"]
+        fuente = fuentes.get(nombre_fuente)
         if fuente is None:
-            registro.warning("sin fuente para la tienda %r", busqueda["tienda"])
+            registro.warning(
+                "sin fuente %r para la tienda %r", nombre_fuente, busqueda["tienda"]
+            )
             continue
         try:
             capturas = fuente.buscar(busqueda["termino"], limite)

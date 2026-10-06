@@ -376,3 +376,51 @@ def test_el_descuento_se_mide_contra_el_minimo_anterior_a_la_captura(tmp_path):
 
     assert enviadas == 1
     assert avisos.enviados[-1][1].regla == "descuento_minimo_pct"
+
+
+def test_una_entrada_puede_declarar_su_fuente(tmp_path):
+    """Un producto de abcdin se captura con la fuente solotodo."""
+    ruta = tmp_path / "lista.yaml"
+    ruta.write_text(
+        "vigilados:\n"
+        "  - tienda: abcdin\n"
+        "    fuente: solotodo\n"
+        "    url: https://api.solotodo.com/entities/1379496/\n"
+        "    reglas:\n"
+        "      precio_maximo: 400000\n",
+        encoding="utf-8",
+    )
+    vigilados, _ = cargar_lista_deseos(ruta)
+    assert vigilados[0]["tienda"] == "abcdin"
+    assert vigilados[0]["fuente"] == "solotodo"
+
+
+def test_sin_fuente_declarada_la_fuente_es_la_tienda(tmp_path):
+    """Todas las entradas que ya existían siguen funcionando sin tocarlas."""
+    ruta = tmp_path / "lista.yaml"
+    ruta.write_text(
+        "busquedas:\n"
+        "  - tienda: paris\n"
+        "    termino: notebook\n"
+        "    reglas:\n"
+        "      precio_maximo: 400000\n",
+        encoding="utf-8",
+    )
+    _, busquedas = cargar_lista_deseos(ruta)
+    assert busquedas[0]["fuente"] == "paris"
+
+
+def test_el_ciclo_usa_la_fuente_declarada_y_no_la_tienda(tmp_path):
+    con = abrir(tmp_path / "p.db")
+    avisos = NotificadorFalso()
+    fuente = FuenteFalsa("solotodo", [captura(sku="S1", tienda="abcdin")])
+
+    vigilado = {
+        "tienda": "abcdin",
+        "fuente": "solotodo",
+        "url": "https://api.solotodo.com/entities/1/",
+        "reglas": Reglas(precio_maximo=90000),
+    }
+    enviadas = ejecutar_ciclo(con, {"solotodo": fuente}, [vigilado], [], avisos, CONFIG)
+
+    assert enviadas == 1
