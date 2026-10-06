@@ -67,3 +67,24 @@ def test_una_entidad_sin_producto_normalizado_no_estalla():
     entidad = dict(ENTIDADES[0], product=None)
     c = captura_de_entidad(entidad, TIENDAS, EXCLUIDAS)
     assert c is not None and c.producto_solotodo is None
+
+
+@pytest.mark.parametrize(
+    "roto",
+    [
+        {"active_registry": {"is_available": True, "normal_price": "587990.00",
+                             "offer_price": None}},
+        {"sku": ""},
+        {"name": ""},
+        {"external_url": ""},
+    ],
+)
+def test_una_entidad_incompleta_se_descarta(roto):
+    """Activa y de una tienda que sí seguimos, pero le falta lo imprescindible.
+
+    Es la única rama de descarte que las otras pruebas no alcanzan: las demás
+    entidades de la fixture se paran antes, en el registro activo, la exclusión
+    o la tienda desconocida.
+    """
+    entidad = dict(ENTIDADES[0], **roto)
+    assert captura_de_entidad(entidad, TIENDAS, EXCLUIDAS) is None

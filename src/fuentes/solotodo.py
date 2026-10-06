@@ -40,6 +40,11 @@ def captura_de_entidad(
 
     `tienda` es la tienda REAL: el producto está en AbcDin, y SoloTodo es solo
     quien nos lo cuenta.
+
+    `excluidas` debe traer identificadores ya normalizados, en la misma forma
+    que devuelve `identificador_de_tienda` (p. ej. `"pc-factory"`), no nombres
+    de tienda en crudo: si no, la comparación nunca coincide y una tienda que
+    ya cubrimos en directo deja de excluirse sin que nada avise.
     """
     registro_activo = entidad.get("active_registry")
     if not registro_activo:
