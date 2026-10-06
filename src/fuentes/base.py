@@ -27,6 +27,11 @@ class Captura:
     # los lista, sin etiqueta que diga cuál es cuál. El orquestador confirma
     # contra la ficha antes de alertar o de escribir en el histórico.
     precios_etiquetados: bool = True
+    # El identificador que SoloTodo da al mismo artículo en todas las tiendas.
+    # Solo lo trae esa fuente. Se guarda desde ya aunque nada lo use todavía:
+    # es el dato que hará posible el emparejado, y no se puede recuperar hacia
+    # atrás sobre un histórico que ya creció sin él.
+    producto_solotodo: int | None = None
 
 
 @dataclass(frozen=True)

@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS productos (
     tienda          TEXT    NOT NULL,
     sku_externo     TEXT    NOT NULL,
     ean             TEXT,
+    producto_solotodo INTEGER,
     titulo          TEXT    NOT NULL,
     url             TEXT    NOT NULL UNIQUE,
     imagen_url      TEXT,

@@ -87,3 +87,26 @@ def test_el_historico_crece_si_cambia_la_tarjeta(tmp_path):
     # Nada cambió respecto de la anterior: no debe anotarse fila.
     assert registrar_si_cambio(con, pid, con_otra) is False
     assert con.execute("SELECT COUNT(*) FROM historico_precios").fetchone()[0] == 2
+
+
+def test_el_alta_guarda_el_identificador_de_solotodo(tmp_path):
+    con = abrir(tmp_path / "p.db")
+    c = replace(captura(), producto_solotodo=43835)
+    pid = alta_o_actualiza_producto(con, c)
+
+    fila = con.execute(
+        "SELECT producto_solotodo FROM productos WHERE id = ?", (pid,)
+    ).fetchone()
+    assert fila["producto_solotodo"] == 43835
+
+
+def test_una_captura_sin_identificador_no_borra_el_que_ya_habia(tmp_path):
+    """Paris y Falabella no lo traen; no pueden pisar lo que SoloTodo guardó."""
+    con = abrir(tmp_path / "p.db")
+    pid = alta_o_actualiza_producto(con, replace(captura(), producto_solotodo=43835))
+    alta_o_actualiza_producto(con, captura())   # sin identificador
+
+    fila = con.execute(
+        "SELECT producto_solotodo FROM productos WHERE id = ?", (pid,)
+    ).fetchone()
+    assert fila["producto_solotodo"] == 43835
