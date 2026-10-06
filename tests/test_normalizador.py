@@ -162,3 +162,29 @@ def test_un_ean_que_vale_null_se_descarta():
 
 def test_a_entero_es_publica():
     assert a_entero("229.990") == 229990
+
+
+def test_una_lista_de_relacionados_no_suplanta_al_producto_de_la_ficha():
+    """En una ficha, un `ItemList` solo puede ser un carrusel de recomendados.
+
+    Va antes que el producto real a propósito: si ganara el primero, se
+    guardaría otro producto bajo la URL vigilada, y su precio entraría en el
+    mínimo histórico para siempre.
+    """
+    html = (
+        '<script type="application/ld+json">'
+        '{"@type":"ItemList","itemListElement":[{"@type":"ListItem","item":'
+        '{"@type":"Product","name":"Relacionado barato","sku":"OTRO-999",'
+        '"offers":{"price":"9990"}}}]}'
+        "</script>"
+        '<script type="application/ld+json">'
+        '{"@type":"Product","name":"El vigilado","sku":"MK2GCAHDUR",'
+        '"offers":{"price":"229990"}}'
+        "</script>"
+    )
+
+    c = a_captura(html, "https://t.cl/vigilado.html", "tienda")
+
+    assert c is not None
+    assert c.sku_externo == "MK2GCAHDUR"
+    assert c.precio_internet == 229990

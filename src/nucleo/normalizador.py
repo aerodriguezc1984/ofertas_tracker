@@ -39,14 +39,23 @@ def bloques_ld_json(html: str) -> list[dict]:
     return objetos
 
 
-def productos_ld_json(html: str) -> list[dict]:
-    """Los `Product` de la página: los de primer nivel y los de un `ItemList`."""
+def productos_ld_json(html: str, incluir_listas: bool = True) -> list[dict]:
+    """Los `Product` de la página: los de primer nivel y, opcionalmente, los de un `ItemList`.
+
+    `incluir_listas` separa dos lectores con necesidades opuestas. Una página
+    de búsqueda anuncia varios productos a propósito dentro de un `ItemList`:
+    ahí es el dato que se busca (Falabella, en su `candidatos`). Pero una
+    ficha de producto que además trae un `ItemList` lo hace para un carrusel
+    de recomendados: ninguno de esos productos es el que vigila la URL, y
+    tomar el primero es guardar el precio de otro artículo bajo esta ficha
+    para siempre. Por eso `a_captura` llama con `incluir_listas=False`.
+    """
     productos: list[dict] = []
     for objeto in bloques_ld_json(html):
         if _tipo_es(objeto, "Product"):
             productos.append(objeto)
             continue
-        if not _tipo_es(objeto, "ItemList"):
+        if not incluir_listas or not _tipo_es(objeto, "ItemList"):
             continue
         for elemento in objeto.get("itemListElement") or []:
             if not isinstance(elemento, dict):
@@ -57,11 +66,15 @@ def productos_ld_json(html: str) -> list[dict]:
     return productos
 
 
-def _texto(valor) -> str:
+def texto(valor) -> str:
     """Un campo de texto del JSON-LD, con sus entidades HTML resueltas.
 
     El bloque entero no se desescapa (rompería el JSON), pero el contenido de
-    un campo sí puede traerlas: Falabella publica `Monitor 27&quot; 4K`.
+    un campo sí puede traerlas: Falabella publica `Monitor 27&quot; 4K`. Pública
+    porque el mismo problema aparece fuera de la ficha: el `ItemList` de la
+    búsqueda de Falabella es el otro sitio del proyecto donde ese título
+    escapado aparece tal cual, y un título debe normalizarse igual venga de
+    donde venga.
     """
     return htmlmod.unescape(str(valor or "")).strip()
 
@@ -102,7 +115,7 @@ def a_captura(html: str, url: str, tienda: str) -> Captura | None:
     varios Product); que uno no sirva no debe esconder al siguiente, así que un
     bloque inservible se salta con `continue`, nunca con `return`.
     """
-    for objeto in productos_ld_json(html):
+    for objeto in productos_ld_json(html, incluir_listas=False):
         ofertas = objeto.get("offers") or {}
         if isinstance(ofertas, list):
             ofertas = ofertas[0] if ofertas else {}
@@ -111,7 +124,7 @@ def a_captura(html: str, url: str, tienda: str) -> Captura | None:
         if precio is None:
             continue
 
-        sku = _texto(objeto.get("sku"))
+        sku = texto(objeto.get("sku"))
         if not sku:
             # La identidad del producto es (tienda, sku_externo). Sin sku, dos
             # productos distintos colapsarían en la misma fila: tan inventado
@@ -128,14 +141,14 @@ def a_captura(html: str, url: str, tienda: str) -> Captura | None:
         disponible = "outofstock" not in disponibilidad.lower().replace("/", "")
 
         # Algunas tiendas publican la cadena "null" en vez de omitir el campo.
-        ean = _texto(objeto.get("gtin13") or objeto.get("gtin14") or objeto.get("gtin"))
+        ean = texto(objeto.get("gtin13") or objeto.get("gtin14") or objeto.get("gtin"))
         if ean.lower() in ("", "null", "none"):
             ean = None
 
         return Captura(
             tienda=tienda,
             sku_externo=sku,
-            titulo=_texto(objeto.get("name")),
+            titulo=texto(objeto.get("name")),
             url=url,
             precio_internet=precio,
             precio_normal=a_entero(objeto.get("listPrice")),
