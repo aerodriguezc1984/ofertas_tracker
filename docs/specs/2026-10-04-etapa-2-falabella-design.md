@@ -258,6 +258,30 @@ Cada prueba nueva se comprueba rompiendo a propósito lo que dice medir, antes d
 4. `herramientas/sonda_paris.py` sigue en verde: la base no rompió la tienda que ya funcionaba.
 5. `tests/test_capas.py` sigue en verde.
 
+## Limitación conocida: el adaptador es de primera parte
+
+*Descubierto el 2026-10-05, al ejercitar el ciclo real tras cerrar la etapa.*
+
+**Los productos de marketplace de Falabella no se pueden confirmar**, y no es cuestión de ajustar
+configuración. Su ficha trae dos cosas incompatibles con el adaptador:
+
+- Su `sellerSkuId` es el **código interno del vendedor** (`t14`, `t480con16yi7`), no un número de
+  Falabella, así que el anclaje por SKU no puede casar nunca.
+- Su JSON-LD declara un `sku` distinto del que lleva la URL —consecutivo, padre y variante— que la
+  guarda de `captura_de_ficha` rechaza con razón.
+
+Comprobado en los dos sentidos: el término «notebook 16gb» devuelve casi solo reacondicionados de
+terceros y confirma **0 de 3**; «notebook» devuelve producto de la propia tienda y confirma
+**3 de 3**. El ciclo real con el segundo captura ocho productos con los tres precios etiquetados.
+
+> [!info] Falla ruidoso, no en silencio
+> Cada ficha de marketplace deja un `WARNING` y la captura se descarta. No se guarda un precio que
+> no es, que era la única forma de que esto importara de verdad.
+
+Lo que esto significa para la Etapa 2b: si abc.cl tiene marketplace con una estructura parecida,
+heredará la misma limitación. Y cubrirlo no sería un retoque del adaptador sino **un segundo camino
+de lectura**, porque la información que falta no está en la página en otra forma: no está.
+
 ## Riesgos conocidos
 
 **1. El anclaje al SKU es el corazón del adaptador.** Ya está resuelto y verificado sobre ocho
