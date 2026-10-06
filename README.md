@@ -29,6 +29,7 @@ No tocan la red. Para comprobar contra las tiendas de verdad:
 ```
 python herramientas/sonda_paris.py notebook
 python herramientas/sonda_falabella.py notebook
+python herramientas/sonda_solotodo.py notebook
 ```
 
 ## Cómo está hecho
@@ -43,6 +44,17 @@ los productos dentro. A cambio, sus precios vienen sin etiquetar y se infieren
 del orden, así que antes de alertar —o de escribir en el histórico— se confirman
 contra la ficha. Un precio adivinado no dispara un aviso ni contamina el mínimo
 histórico.
+
+Además de las tiendas que se leen en directo, **SoloTodo** aporta anchura: es un
+agregador con API pública que cubre cientos de tiendas chilenas. Sus capturas
+llevan la tienda real —`abcdin`, no `solotodo`—, porque el producto está allí.
+Las tiendas que ya tenemos en directo se excluyen: su `external_url` es el mismo
+que el nuestro y las dos fuentes discrepan en el precio de tarjeta, así que
+alternándose harían crecer el histórico una fila por ciclo.
+
+De SoloTodo viene también el identificador del mismo artículo en todas las
+tiendas. Todavía no se usa para nada: se guarda porque es el dato que hará
+posible comparar precios entre tiendas, y no se puede recuperar hacia atrás.
 
 El histórico guarda **variaciones**, no pasadas: una fila solo cuando el precio o
 el stock cambian.

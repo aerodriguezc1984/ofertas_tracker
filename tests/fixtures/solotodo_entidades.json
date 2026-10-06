@@ -1,0 +1,54 @@
+[
+  {
+    "id": 1379496,
+    "name": "Notebook AbcDin de prueba",
+    "sku": "AD-100",
+    "external_url": "https://www.abc.cl/notebook-AD-100",
+    "ean": "7801234567890",
+    "store": 30,
+    "product": {"id": 43835, "name": "Notebook normalizado"},
+    "active_registry": {
+      "is_available": true,
+      "normal_price": "587990.00",
+      "offer_price": "573990.00"
+    }
+  },
+  {
+    "id": 1379497,
+    "name": "Entidad sin precio activo",
+    "sku": "AD-101",
+    "external_url": "https://www.abc.cl/notebook-AD-101",
+    "ean": null,
+    "store": 30,
+    "product": {"id": 43836, "name": "Otro"},
+    "active_registry": null
+  },
+  {
+    "id": 1379498,
+    "name": "Cartucho visto en Falabella",
+    "sku": "4839263",
+    "external_url": "https://www.falabella.com/falabella-cl/product/4839263/x/4839263",
+    "ean": null,
+    "store": 9,
+    "product": {"id": 51001, "name": "Cartucho"},
+    "active_registry": {
+      "is_available": true,
+      "normal_price": "13990.00",
+      "offer_price": "13990.00"
+    }
+  },
+  {
+    "id": 1379499,
+    "name": "Entidad de una tienda desconocida",
+    "sku": "XX-1",
+    "external_url": "https://tienda-rara.cl/xx-1",
+    "ean": null,
+    "store": 999999,
+    "product": null,
+    "active_registry": {
+      "is_available": false,
+      "normal_price": "1000.00",
+      "offer_price": "900.00"
+    }
+  }
+]

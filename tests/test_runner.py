@@ -1,5 +1,6 @@
 import logging
 
+import runner
 from almacen.conexion import abrir
 from fuentes.base import Captura
 from nucleo.evaluador import Reglas
@@ -376,3 +377,75 @@ def test_el_descuento_se_mide_contra_el_minimo_anterior_a_la_captura(tmp_path):
 
     assert enviadas == 1
     assert avisos.enviados[-1][1].regla == "descuento_minimo_pct"
+
+
+def test_una_entrada_puede_declarar_su_fuente(tmp_path):
+    """Un producto de abcdin se captura con la fuente solotodo."""
+    ruta = tmp_path / "lista.yaml"
+    ruta.write_text(
+        "vigilados:\n"
+        "  - tienda: abcdin\n"
+        "    fuente: solotodo\n"
+        "    url: https://api.solotodo.com/entities/1379496/\n"
+        "    reglas:\n"
+        "      precio_maximo: 400000\n",
+        encoding="utf-8",
+    )
+    vigilados, _ = cargar_lista_deseos(ruta)
+    assert vigilados[0]["tienda"] == "abcdin"
+    assert vigilados[0]["fuente"] == "solotodo"
+
+
+def test_sin_fuente_declarada_la_fuente_es_la_tienda(tmp_path):
+    """Todas las entradas que ya existían siguen funcionando sin tocarlas."""
+    ruta = tmp_path / "lista.yaml"
+    ruta.write_text(
+        "busquedas:\n"
+        "  - tienda: paris\n"
+        "    termino: notebook\n"
+        "    reglas:\n"
+        "      precio_maximo: 400000\n",
+        encoding="utf-8",
+    )
+    _, busquedas = cargar_lista_deseos(ruta)
+    assert busquedas[0]["fuente"] == "paris"
+
+
+def test_el_ciclo_usa_la_fuente_declarada_y_no_la_tienda(tmp_path):
+    con = abrir(tmp_path / "p.db")
+    avisos = NotificadorFalso()
+    fuente = FuenteFalsa("solotodo", [captura(sku="S1", tienda="abcdin")])
+
+    vigilado = {
+        "tienda": "abcdin",
+        "fuente": "solotodo",
+        "url": "https://api.solotodo.com/entities/1/",
+        "reglas": Reglas(precio_maximo=90000),
+    }
+    enviadas = ejecutar_ciclo(con, {"solotodo": fuente}, [vigilado], [], avisos, CONFIG)
+
+    assert enviadas == 1
+
+
+def test_una_seccion_solotodo_vacia_en_el_yaml_no_tumba_el_ciclo(tmp_path, monkeypatch):
+    """`solotodo:` sin hijos en el YAML da `{"solotodo": None}`, no `{}`.
+
+    `config.get("solotodo", {})` no usa el valor por defecto cuando la clave
+    existe con valor `None`, así que `.get("tiendas_excluidas", [])` sobre ese
+    `None` estalla con `AttributeError` antes de abrir la base: se pierde el
+    ciclo entero por una sección vacía. El resto del proyecto tiene la
+    disciplina contraria (`_reglas_de`, `_entrada_valida`): una errata en el
+    YAML cuesta ese producto, no el ciclo.
+    """
+    config = {
+        "ejecucion": {"reintentos": 1, "espera_entre_peticiones_seg": [0, 0], "limite_por_busqueda": 15},
+        "historico": {"ventana_minimo_dias": 90, "dias_minimos_para_descuento": 7},
+        "alertas": {"canal": "archivo", "cooldown_dias": 5, "ruta_archivo": "logs/alertas.jsonl"},
+        "solotodo": None,   # la clave está, pero sin hijos
+    }
+
+    monkeypatch.setattr(runner, "RAIZ", tmp_path)
+    monkeypatch.setattr(runner, "cargar_config", lambda ruta: config)
+    monkeypatch.setattr(runner, "cargar_lista_deseos", lambda ruta: ([], []))
+
+    assert runner.main() == 0

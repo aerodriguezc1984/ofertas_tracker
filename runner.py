@@ -29,6 +29,7 @@ from avisos.telegram import (                      # noqa: E402
 from fuentes.base import Referencia                # noqa: E402
 from fuentes.falabella import Falabella            # noqa: E402
 from fuentes.paris import Paris                    # noqa: E402
+from fuentes.solotodo import SoloTodo              # noqa: E402
 from fuentes.transporte import crear_transporte    # noqa: E402
 from nucleo.evaluador import Reglas, evaluar       # noqa: E402
 from nucleo.frecuencia import debe_notificar       # noqa: E402
@@ -80,7 +81,12 @@ def cargar_lista_deseos(ruta: Path | str) -> tuple[list[dict], list[dict]]:
         if reglas is None:
             continue
         vigilados.append(
-            {"tienda": entrada["tienda"], "url": entrada["url"], "reglas": reglas}
+            {
+                "tienda": entrada["tienda"],
+                "fuente": entrada.get("fuente") or entrada["tienda"],
+                "url": entrada["url"],
+                "reglas": reglas,
+            }
         )
 
     busquedas = []
@@ -91,7 +97,12 @@ def cargar_lista_deseos(ruta: Path | str) -> tuple[list[dict], list[dict]]:
         if reglas is None:
             continue
         busquedas.append(
-            {"tienda": entrada["tienda"], "termino": entrada["termino"], "reglas": reglas}
+            {
+                "tienda": entrada["tienda"],
+                "fuente": entrada.get("fuente") or entrada["tienda"],
+                "termino": entrada["termino"],
+                "reglas": reglas,
+            }
         )
 
     return vigilados, busquedas
@@ -201,29 +212,52 @@ def ejecutar_ciclo(con, fuentes, vigilados, busquedas, notificador, config) -> i
     enviadas = 0
 
     for vigilado in vigilados:
-        fuente = fuentes.get(vigilado["tienda"])
+        nombre_fuente = vigilado.get("fuente") or vigilado["tienda"]
+        fuente = fuentes.get(nombre_fuente)
         if fuente is None:
-            registro.warning("sin fuente para la tienda %r", vigilado["tienda"])
+            registro.warning(
+                "sin fuente %r para la tienda %r", nombre_fuente, vigilado["tienda"]
+            )
             continue
         try:
             capturas = fuente.obtener(
                 [Referencia(tienda=vigilado["tienda"], url=vigilado["url"])]
             )
         except Exception as error:  # noqa: BLE001
-            registro.warning("fuente %s falló: %s", fuente.nombre, error)
+            # Con traza: aquí escapa cualquier excepción de la fuente (un
+            # `JSONDecodeError` si la API devuelve HTML, por ejemplo), y sin el
+            # tipo y el fichero un fallo nuestro se confunde con un tropiezo de
+            # la tienda. El sujeto es la URL y la tienda vigiladas, no
+            # `fuente.nombre`: con una fuente compartida como solotodo, el
+            # nombre no dice qué tienda falló.
+            registro.warning(
+                "no se pudo capturar %s (tienda %s) con la fuente %s: %s",
+                vigilado["url"], vigilado["tienda"], fuente.nombre, error,
+                exc_info=True,
+            )
             continue
         enviadas += _procesar(con, capturas, vigilado["reglas"], notificador, config, fuente)
 
     limite = config.get("ejecucion", {}).get("limite_por_busqueda", 15)
     for busqueda in busquedas:
-        fuente = fuentes.get(busqueda["tienda"])
+        nombre_fuente = busqueda.get("fuente") or busqueda["tienda"]
+        fuente = fuentes.get(nombre_fuente)
         if fuente is None:
-            registro.warning("sin fuente para la tienda %r", busqueda["tienda"])
+            registro.warning(
+                "sin fuente %r para la tienda %r", nombre_fuente, busqueda["tienda"]
+            )
             continue
         try:
             capturas = fuente.buscar(busqueda["termino"], limite)
         except Exception as error:  # noqa: BLE001
-            registro.warning("búsqueda en %s falló: %s", fuente.nombre, error)
+            # Con traza, por el mismo motivo que en el bucle de vigilados: el
+            # sujeto es el término y la tienda de la búsqueda, no
+            # `fuente.nombre`.
+            registro.warning(
+                "no se pudo buscar %r (tienda %s) con la fuente %s: %s",
+                busqueda["termino"], busqueda["tienda"], fuente.nombre, error,
+                exc_info=True,
+            )
             continue
         enviadas += _procesar(con, capturas, busqueda["reglas"], notificador, config, fuente)
 
@@ -257,7 +291,14 @@ def main() -> int:
         reintentos=config["ejecucion"]["reintentos"],
         pausa=tuple(config["ejecucion"]["espera_entre_peticiones_seg"]),
     )
-    fuentes = {"paris": Paris(transporte), "falabella": Falabella(transporte)}
+    fuentes = {
+        "paris": Paris(transporte),
+        "falabella": Falabella(transporte),
+        "solotodo": SoloTodo(
+            transporte,
+            excluidas=(config.get("solotodo") or {}).get("tiendas_excluidas", []),
+        ),
+    }
 
     try:
         notificador = construir_notificador(config)

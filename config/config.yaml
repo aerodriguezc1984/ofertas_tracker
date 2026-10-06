@@ -9,3 +9,17 @@ alertas:
   canal: archivo          # archivo | telegram
   cooldown_dias: 5
   ruta_archivo: logs/alertas.jsonl
+solotodo:
+  # Las tiendas que ya cubrimos con un adaptador directo. SoloTodo las ignora:
+  # su `external_url` es el mismo que el nuestro, así que caerían en la misma
+  # fila discrepando en el precio de tarjeta, y el histórico crecería una fila
+  # por ciclo sin que nada hubiera cambiado.
+  #
+  # Esta lista vive en TRES sitios y nada los ata entre sí: aquí, en las claves
+  # del diccionario `fuentes` de runner.py, y en el conjunto `directas` de
+  # herramientas/sonda_solotodo.py. Quien añada un adaptador directo nuevo
+  # tiene que tocar los tres; si se olvida de este, SoloTodo y el adaptador
+  # capturarán el mismo artículo en la misma fila, discreparán en el precio de
+  # tarjeta, y el histórico crecerá una fila por ciclo sin que ningún precio se
+  # haya movido.
+  tiendas_excluidas: [paris, falabella]

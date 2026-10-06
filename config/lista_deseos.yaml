@@ -22,3 +22,9 @@ busquedas:
     reglas:
       precio_maximo: 700000
       permitir_precio_tarjeta: false
+
+  - termino: notebook
+    tienda: solotodo
+    fuente: solotodo
+    reglas:
+      precio_maximo: 700000
