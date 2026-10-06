@@ -397,6 +397,27 @@ def test_un_ean_ausente_llega_como_none_y_no_como_texto():
     assert c.ean is None
 
 
+@pytest.mark.parametrize(
+    "roto",
+    [
+        {"active_registry": {"is_available": True, "normal_price": "587990.00",
+                             "offer_price": None}},
+        {"sku": ""},
+        {"name": ""},
+        {"external_url": ""},
+    ],
+)
+def test_una_entidad_incompleta_se_descarta(roto):
+    """Activa y de una tienda que sí seguimos, pero le falta lo imprescindible.
+
+    Es la única rama de descarte que las otras pruebas no alcanzan: las demás
+    entidades de la fixture se paran antes, en el registro activo, la exclusión
+    o la tienda desconocida.
+    """
+    entidad = dict(ENTIDADES[0], **roto)
+    assert captura_de_entidad(entidad, TIENDAS, EXCLUIDAS) is None
+
+
 def test_una_entidad_sin_producto_normalizado_no_estalla():
     entidad = dict(ENTIDADES[0], product=None)
     c = captura_de_entidad(entidad, TIENDAS, EXCLUIDAS)
@@ -500,7 +521,7 @@ def captura_de_entidad(
 - [ ] **Paso 4: Ejecutar y comprobar que pasan**
 
 Ejecuta: `python -m pytest -v`
-Esperado: **124 pasadas** (114 + 10: 7 casos sueltos + 3 del `parametrize`).
+Esperado: **128 pasadas** (114 + 14: 8 casos sueltos y 6 de los dos `parametrize`).
 
 - [ ] **Paso 5: Commit**
 
@@ -696,7 +717,7 @@ class SoloTodo:
 - [ ] **Paso 4: Ejecutar y comprobar que pasan**
 
 Ejecuta: `python -m pytest -v`
-Esperado: **131 pasadas** (124 + 7).
+Esperado: **135 pasadas** (128 + 7).
 
 - [ ] **Paso 5: Commit**
 
@@ -824,7 +845,7 @@ y lo mismo en el bucle de búsquedas, con `busqueda["fuente"]` y `busqueda["tien
 - [ ] **Paso 4: Ejecutar y comprobar que pasan**
 
 Ejecuta: `python -m pytest -v`
-Esperado: **134 pasadas** (131 + 3).
+Esperado: **138 pasadas** (135 + 3).
 
 - [ ] **Paso 5: Commit**
 
