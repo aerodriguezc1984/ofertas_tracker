@@ -285,7 +285,12 @@ def test_nuestra_propia_tienda_no_compite_consigo_misma():
 # --- Review Focus 1: nuestro precio a cero ---
 @pytest.mark.parametrize("precio_nuestro", [0, -1])
 def test_un_precio_nuestro_no_positivo_no_compara(precio_nuestro):
-    """El porcentaje divide por nuestro precio: un cero tumbaría el paso entero."""
+    """Un precio nuestro no positivo no da veredicto NI excepción.
+
+    Quien lo garantiza es el filtro de candidatas, no una guarda aparte: con
+    `precio_nuestro <= 0` ninguna oferta positiva puede ser menor, así que la
+    división ni se alcanza.
+    """
     assert mejor_oferta(precio_nuestro, "paris", [oferta(precio=1)], REGLAS) is None
 
 
@@ -364,16 +369,15 @@ def mejor_oferta(
     reglas: ReglasComparacion,
 ) -> VeredictoMejorPrecio | None:
     """La mejor oferta ajena que supera los dos umbrales, o None."""
-    if precio_nuestro <= 0:
-        # El porcentaje divide por este número. Y un producto sin precio no
-        # tiene con qué comparar: no es un caso de error, es un «todavía no».
-        return None
-
     candidatas = [
         oferta
         for oferta in ofertas
         if oferta.disponible
         and oferta.precio > 0
+        # Esta condición es el ÚNICO cerrojo de la división de más abajo: si no
+        # hay candidatas no hay veredicto, y si las hay entonces
+        # precio_nuestro > oferta.precio > 0, así que el denominador nunca es
+        # cero. No la quites creyendo que solo descarta ofertas caras.
         and oferta.precio < precio_nuestro
         # Nuestro propio producto aparece en su lista de entidades: el
         # agregador también cubre nuestra tienda. Compararse consigo mismo
@@ -400,7 +404,7 @@ def mejor_oferta(
 Ejecuta: `python -m pytest -v`
 Esperado: **157 pasadas** (144 + 13).
 
-- [ ] **Paso 5: Falsar tres de las pruebas nuevas**
+- [ ] **Paso 5: Falsar cuatro de las pruebas nuevas**
 
 Una por una, restaurando entre medias:
 
@@ -411,7 +415,14 @@ Una por una, restaurando entre medias:
 2. **La propia tienda.** Quita la condición `and oferta.tienda != tienda_nuestra`.
    Esperado: `test_nuestra_propia_tienda_no_compite_consigo_misma` roja porque **sí** hay
    veredicto (`assert <VeredictoMejorPrecio...> is None`).
-3. **Los dos umbrales.** Cambia el `or` de la última guarda por `and`.
+3. **El cerrojo de la división.** Quita del filtro la línea `and oferta.precio < precio_nuestro`.
+   Esperado: el caso `[0]` de `test_un_precio_nuestro_no_positivo_no_compara` rojo con
+   `ZeroDivisionError: division by zero` —el daño que el docstring nombra—. El caso `[-1]` sigue
+   verde, y está bien: ahí el ahorro sale negativo y el umbral lo tumba antes de dividir.
+   **Un solo cerrojo por riesgo.** Una segunda guarda `if precio_nuestro <= 0` haría que ninguna
+   mutación de un solo punto pudiera exponer la división, y la prueba pasaría hiciera lo que
+   hiciera el código.
+4. **Los dos umbrales.** Cambia el `or` de la última guarda por `and`.
    Esperado: `test_cumplir_el_porcentaje_sin_el_ahorro_no_basta` **y**
    `test_cumplir_el_ahorro_sin_el_porcentaje_no_basta` rojas, las dos. Si solo se pone roja una,
    la mutación no demuestra lo que dice: vuelve a mirarla.
