@@ -16,6 +16,7 @@ from urllib.parse import urlencode
 
 from fuentes.base import Captura, Referencia, Transporte
 from fuentes.transporte import TiendaBloqueada
+from nucleo.comparacion import OfertaAjena
 from nucleo.normalizador import a_entero
 
 registro = logging.getLogger(__name__)
@@ -180,3 +181,91 @@ class SoloTodo:
                 continue
             capturas.append(captura)
         return capturas
+
+    def identidad_de(self, tienda: str, sku: str) -> int | None:
+        """El id de producto que el agregador da a (tienda, sku), o None.
+
+        No basta con que la búsqueda devuelva un único resultado: se exige que
+        el `sku` de la entidad coincida con el nuestro. Un precio equivocado
+        contamina un ciclo; una identidad equivocada contamina todas las
+        comparaciones futuras de esa fila.
+        """
+        tiendas = self._catalogo()
+        if tiendas is None:
+            return None
+
+        numericos = [
+            identificador
+            for identificador, nombre in tiendas.items()
+            if identificador_de_tienda(nombre) == tienda
+        ]
+        if not numericos:
+            # Una tienda que el agregador no cubre. No es un fallo: hay tiendas
+            # nuestras que simplemente no están ahí.
+            registro.warning("solotodo: no cubre la tienda %r", tienda)
+            return None
+
+        consulta = urlencode({"stores": numericos[0], "search": sku})
+        url = f"{self.BASE}/entities/?{consulta}"
+        try:
+            datos = json.loads(self._traer(url))
+        except TiendaBloqueada as error:
+            registro.warning(
+                "solotodo: identidad bloqueada para %s/%s (%s)", tienda, sku, error
+            )
+            return None
+
+        for entidad in datos.get("results") or []:
+            if str(entidad.get("sku") or "").strip() != sku:
+                continue
+            producto = entidad.get("product") or {}
+            identificador = producto.get("id") if isinstance(producto, dict) else None
+            if isinstance(identificador, int):
+                return identificador
+
+        registro.warning("solotodo: ninguna entidad de %r con el sku %r", tienda, sku)
+        return None
+
+    def ofertas_de(self, producto_solotodo: int) -> list[OfertaAjena]:
+        """El precio del mismo artículo en todas las tiendas, en una petición.
+
+        Devuelve también las agotadas: descartarlas es decisión del núcleo, que
+        es quien conoce las reglas. Aquí solo se traduce.
+        """
+        tiendas = self._catalogo()
+        if tiendas is None:
+            return []
+
+        url = f"{self.BASE}/products/{int(producto_solotodo)}/entities/"
+        try:
+            datos = json.loads(self._traer(url))
+        except TiendaBloqueada as error:
+            registro.warning(
+                "solotodo: ofertas bloqueadas para el producto %s (%s)",
+                producto_solotodo, error,
+            )
+            return []
+
+        ofertas: list[OfertaAjena] = []
+        for entidad in datos if isinstance(datos, list) else []:
+            activo = entidad.get("active_registry")
+            if not isinstance(activo, dict):
+                continue
+            precio = a_entero(activo.get("offer_price"))
+            if precio is None or precio <= 0:
+                continue
+            nombre = tiendas.get(entidad.get("store"))
+            if nombre is None:
+                continue
+            enlace = str(entidad.get("external_url") or "").strip()
+            if not enlace:
+                continue
+            ofertas.append(
+                OfertaAjena(
+                    tienda=identificador_de_tienda(nombre),
+                    precio=precio,
+                    url=enlace,
+                    disponible=bool(activo.get("is_available")),
+                )
+            )
+        return ofertas

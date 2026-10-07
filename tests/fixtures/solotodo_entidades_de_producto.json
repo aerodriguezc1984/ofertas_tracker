@@ -1,0 +1,37 @@
+[
+  {
+    "id": 101,
+    "store": 45,
+    "sku": "AAA-1",
+    "external_url": "https://www.winpy.cl/venta/memoria-8gb/",
+    "active_registry": {"offer_price": "80000.00", "normal_price": "84000.00", "is_available": true}
+  },
+  {
+    "id": 102,
+    "store": 86,
+    "sku": "BBB-2",
+    "external_url": "https://www.spdigital.cl/memoria-8gb",
+    "active_registry": {"offer_price": "70000.00", "normal_price": "70000.00", "is_available": false}
+  },
+  {
+    "id": 103,
+    "store": 45,
+    "sku": "CCC-3",
+    "external_url": "https://www.winpy.cl/venta/otra/",
+    "active_registry": null
+  },
+  {
+    "id": 104,
+    "store": 999,
+    "sku": "DDD-4",
+    "external_url": "https://desconocida.cl/x",
+    "active_registry": {"offer_price": "10000.00", "normal_price": "10000.00", "is_available": true}
+  },
+  {
+    "id": 105,
+    "store": 86,
+    "sku": "EEE-5",
+    "external_url": "https://www.spdigital.cl/sin-precio",
+    "active_registry": {"offer_price": null, "normal_price": null, "is_available": true}
+  }
+]

@@ -201,6 +201,83 @@ def test_un_catalogo_que_falla_se_reintenta_en_la_llamada_siguiente():
     assert len(intentos) == 2                                  # sí se reintentó
 
 
+ENTIDADES_DE_PRODUCTO = (
+    FIXTURES / "solotodo_entidades_de_producto.json"
+).read_text(encoding="utf-8")
+
+CATALOGO_AMPLIO = json.dumps(
+    [
+        {"id": 11, "name": "Paris"},
+        {"id": 45, "name": "Winpy"},
+        {"id": 86, "name": "SpDigital"},
+    ]
+)
+
+ENTIDAD_CON_SKU = json.dumps(
+    {"count": 1, "results": [{"id": 7, "store": 11, "sku": "106450999",
+                              "product": {"id": 269594}}]}
+)
+
+URL_CATALOGO = "https://api.solotodo.com/stores/"
+URL_IDENTIDAD = "https://api.solotodo.com/entities/?stores=11&search=106450999"
+URL_OFERTAS = "https://api.solotodo.com/products/43835/entities/"
+
+
+def test_la_identidad_sale_del_sku_que_coincide():
+    """La URL del mapa es exacta: si la fuente pidiera otra, el ayudante
+    lanzaría `TiendaBloqueada` y esto daría None. O sea que esta prueba fija
+    también la forma de la consulta, sin una aserción aparte."""
+    traer, _ = transporte_de({URL_CATALOGO: CATALOGO_AMPLIO,
+                              URL_IDENTIDAD: ENTIDAD_CON_SKU})
+    assert SoloTodo(traer).identidad_de("paris", "106450999") == 269594
+
+
+def test_un_sku_que_no_coincide_no_resuelve_identidad():
+    """Un único resultado NO prueba identidad: una identidad adivinada
+    contamina todas las comparaciones futuras de esa fila, no solo un ciclo."""
+    url_otro = "https://api.solotodo.com/entities/?stores=11&search=otro-sku"
+    traer, _ = transporte_de({URL_CATALOGO: CATALOGO_AMPLIO,
+                              url_otro: ENTIDAD_CON_SKU})
+    assert SoloTodo(traer).identidad_de("paris", "otro-sku") is None
+
+
+# --- Review Focus 5: una tienda que el agregador no cubre ---
+def test_una_tienda_fuera_del_catalogo_no_resuelve_ni_pide_nada():
+    traer, pedidas = transporte_de({URL_CATALOGO: CATALOGO_AMPLIO})
+    assert SoloTodo(traer).identidad_de("una-tienda-rara", "123") is None
+    assert not [u for u in pedidas if "/entities/" in u]
+
+
+def test_las_ofertas_salen_de_las_entidades_del_producto():
+    traer, _ = transporte_de({URL_CATALOGO: CATALOGO_AMPLIO,
+                              URL_OFERTAS: ENTIDADES_DE_PRODUCTO})
+    ofertas = SoloTodo(traer).ofertas_de(43835)
+
+    # Solo sobreviven las dos de tiendas conocidas con precio entero: la de
+    # Winpy disponible y la de SpDigital agotada. La agotada SE DEVUELVE —
+    # descartarla es decisión del núcleo, que es quien tiene las reglas.
+    assert [(o.tienda, o.precio, o.disponible) for o in ofertas] == [
+        ("winpy", 80000, True),
+        ("spdigital", 70000, False),
+    ]
+
+
+def test_una_entidad_sin_precio_no_produce_oferta():
+    """Review Focus 3: la API devuelve `active_registry` con `offer_price` nulo."""
+    traer, _ = transporte_de({URL_CATALOGO: CATALOGO_AMPLIO,
+                              URL_OFERTAS: ENTIDADES_DE_PRODUCTO})
+    ofertas = SoloTodo(traer).ofertas_de(43835)
+    assert all(isinstance(o.precio, int) and o.precio > 0 for o in ofertas)
+    assert "sin-precio" not in " ".join(o.url for o in ofertas)
+
+
+def test_sin_catalogo_no_hay_ofertas_ni_identidad():
+    traer, _ = transporte_de({})   # cualquier URL lanza TiendaBloqueada
+    fuente = SoloTodo(traer)
+    assert fuente.ofertas_de(1) == []
+    assert fuente.identidad_de("paris", "1") is None
+
+
 def test_un_catalogo_vacio_no_se_cachea_y_se_reintenta():
     """Un `[]` en `/stores/` no es un fallo de transporte, así que no cae en el
     `except TiendaBloqueada`, pero tampoco es un éxito: cachear `{}` dejaría
