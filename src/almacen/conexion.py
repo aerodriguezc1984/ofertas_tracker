@@ -18,6 +18,7 @@ ESQUEMA = Path(__file__).parent / "esquema.sql"
 # reventaría sobre la base real del usuario.
 COLUMNAS_NUEVAS = [
     ("productos", "producto_solotodo", "INTEGER"),
+    ("productos", "ultima_comparacion", "TEXT"),
 ]
 
 
