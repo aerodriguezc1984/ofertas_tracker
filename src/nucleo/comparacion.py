@@ -58,19 +58,16 @@ def mejor_oferta(
     reglas: ReglasComparacion,
 ) -> VeredictoMejorPrecio | None:
     """La mejor oferta ajena que supera los dos umbrales, o None."""
-    if precio_nuestro <= 0:
-        # El porcentaje divide por este número. Y un producto sin precio no
-        # tiene con qué comparar: no es un caso de error, es un «todavía no».
-        return None
-
     candidatas = [
         oferta
         for oferta in ofertas
         if oferta.disponible
         and oferta.precio > 0
         and oferta.precio < precio_nuestro
-        # Nuestro propio producto aparece en su lista de entidades: el
-        # agregador también cubre nuestra tienda. Compararse consigo mismo
+        # La condición `oferta.precio < precio_nuestro` garantiza que precio_nuestro > 0:
+        # sin candidatas, no hay veredicto; con candidatas, ahorro es positivo y la división
+        # por precio_nuestro nunca falla. Nuestro propio producto aparece en su lista de
+        # entidades: el agregador también cubre nuestra tienda. Compararse consigo mismo
         # diría que Paris está más barato que Paris.
         and oferta.tienda != tienda_nuestra
     ]

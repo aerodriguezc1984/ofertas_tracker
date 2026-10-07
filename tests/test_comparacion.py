@@ -81,7 +81,11 @@ def test_nuestra_propia_tienda_no_compite_consigo_misma():
 # --- Review Focus 1: nuestro precio a cero ---
 @pytest.mark.parametrize("precio_nuestro", [0, -1])
 def test_un_precio_nuestro_no_positivo_no_compara(precio_nuestro):
-    """El porcentaje divide por nuestro precio: un cero tumbaría el paso entero."""
+    """Un precio nuestro no positivo no produce veredicto ni excepción.
+
+    El filtro de candidatas exige `oferta.precio < precio_nuestro`, así que si precio_nuestro <= 0
+    no hay candidatas y se devuelve None. El denominador de la división nunca es cero.
+    """
     assert mejor_oferta(precio_nuestro, "paris", [oferta(precio=1)], REGLAS) is None
 
 
