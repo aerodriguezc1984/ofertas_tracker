@@ -257,8 +257,13 @@ red, sin SQL, sin reloj: se prueba entera con listas construidas a mano.
 Tres niveles, de dentro afuera:
 
 - **Una entidad malformada** dentro de `ofertas_de` se descarta con WARNING; las demás siguen.
-- **Un producto** cuya petición falla se registra con `exc_info` y el bucle continúa con el
-  siguiente. No se marca como comparado, para que lo reintente el ciclo siguiente.
+- **Un producto** cuya petición falla se registra con `exc_info`, **se marca como comparado** y el
+  bucle continúa con el siguiente. Marcarlo parece contraintuitivo —lo natural sería reintentarlo
+  cuanto antes— y es justo lo que evita un trinquete: como el orden pone los no marcados primero,
+  un producto que falla de forma persistente conservaría la cabecera para siempre y robaría un
+  turno de modo acumulativo, hasta dejar sin comparar a todos los sanos. Y lo que llega aquí **es**
+  persistente: los fallos transitorios no pasan por este camino, porque `identidad_de` y
+  `ofertas_de` capturan `TiendaBloqueada` por dentro y devuelven vacío.
 - **SoloTodo entero caído** deja el paso en cero comparaciones, con un WARNING, y `main` devuelve
   éxito igualmente: la captura de este ciclo es válida y ya está guardada.
 
