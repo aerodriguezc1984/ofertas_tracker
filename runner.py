@@ -303,8 +303,8 @@ def ejecutar_comparacion(con, fuente, notificador, config, desde: str) -> int:
                 producto.precio_internet, producto.tienda, ofertas, reglas
             )
             # Se marca aquí, con veredicto o sin él: la comparación se hizo.
-            # Si la petición hubiera fallado, estaríamos en el `except` de
-            # abajo y NO se marcaría, para reintentarlo en el ciclo siguiente.
+            # Si la petición hubiera fallado estaríamos en el `except` de
+            # abajo, que TAMBIÉN marca: ver allí por qué.
             marcar_comparado(con, producto.id)
             if veredicto is None:
                 continue
