@@ -2,14 +2,31 @@ import logging
 
 import runner
 from almacen.conexion import abrir
+from almacen.operaciones import (
+    alta_o_actualiza_producto,
+    guardar_identidad,
+    registrar_si_cambio,
+)
 from fuentes.base import Captura
+from nucleo.comparacion import OfertaAjena
 from nucleo.evaluador import Reglas
-from runner import cargar_lista_deseos, ejecutar_ciclo
+from runner import cargar_lista_deseos, ejecutar_ciclo, ejecutar_comparacion
 
 CONFIG = {
     "ejecucion": {"limite_por_busqueda": 15},
     "historico": {"ventana_minimo_dias": 90, "dias_minimos_para_descuento": 7},
     "alertas": {"cooldown_dias": 5},
+}
+
+CONFIG_CON_COMPARACION = {
+    **CONFIG,
+    "comparacion": {
+        "activa": True,
+        "caida_minima_pct": 10,
+        "ahorro_minimo_pesos": 10000,
+        "maximo_por_ciclo": 25,
+        "cooldown_dias": 5,
+    },
 }
 
 
@@ -33,9 +50,13 @@ class FuenteFalsa:
 class NotificadorFalso:
     def __init__(self):
         self.enviados = []
+        self.mejores_precios = []
 
     def enviar(self, captura, veredicto):
         self.enviados.append((captura, veredicto))
+
+    def enviar_mejor_precio(self, producto, veredicto):
+        self.mejores_precios.append((producto, veredicto))
 
 
 def captura(precio=89990, sku="S1", tienda="paris"):
@@ -449,3 +470,105 @@ def test_una_seccion_solotodo_vacia_en_el_yaml_no_tumba_el_ciclo(tmp_path, monke
     monkeypatch.setattr(runner, "cargar_lista_deseos", lambda ruta: ([], []))
 
     assert runner.main() == 0
+
+
+class SoloTodoFalso:
+    """Una fuente que responde a las dos preguntas de la comparación."""
+
+    nombre = "solotodo"
+
+    def __init__(self, identidad=None, ofertas=None, falla=False):
+        self._identidad = identidad
+        self._ofertas = ofertas or []
+        self._falla = falla
+        self.identidades_pedidas = []
+        self.ofertas_pedidas = []
+
+    def identidad_de(self, tienda, sku):
+        self.identidades_pedidas.append((tienda, sku))
+        return self._identidad
+
+    def ofertas_de(self, producto_solotodo):
+        self.ofertas_pedidas.append(producto_solotodo)
+        if self._falla:
+            raise RuntimeError("la API devolvió HTML")
+        return self._ofertas
+
+
+def _producto_listo(con, precio=100000):
+    """Un producto de Paris con identidad ya resuelta y precio en el histórico."""
+    unica = captura(sku="P1", tienda="paris", precio=precio)
+    producto_id = alta_o_actualiza_producto(con, unica)
+    registrar_si_cambio(con, producto_id, unica)
+    guardar_identidad(con, producto_id, 269594)
+    return producto_id
+
+
+def test_la_comparacion_avisa_de_una_oferta_mejor(tmp_path):
+    con = abrir(tmp_path / "p.db")
+    _producto_listo(con)
+    avisos = NotificadorFalso()
+    fuente = SoloTodoFalso(
+        ofertas=[OfertaAjena("winpy", 80000, "https://winpy.cl/x", True)]
+    )
+
+    enviadas = ejecutar_comparacion(
+        con, fuente, avisos, CONFIG_CON_COMPARACION, "2024-01-01 00:00:00"
+    )
+
+    assert enviadas == 1
+    assert fuente.ofertas_pedidas == [269594]
+
+
+def test_la_comparacion_apagada_no_pide_nada(tmp_path):
+    con = abrir(tmp_path / "p.db")
+    _producto_listo(con)
+    fuente = SoloTodoFalso(ofertas=[OfertaAjena("winpy", 1, "https://winpy.cl/x", True)])
+
+    config = {**CONFIG_CON_COMPARACION, "comparacion": {"activa": False}}
+    assert ejecutar_comparacion(con, fuente, NotificadorFalso(), config, "2024-01-01") == 0
+    assert fuente.ofertas_pedidas == []
+
+
+def test_la_identidad_se_resuelve_una_sola_vez(tmp_path):
+    """Resuelta y guardada, el ciclo siguiente no vuelve a preguntarla."""
+    con = abrir(tmp_path / "p.db")
+    unica = captura(sku="P2", tienda="paris", precio=100000)
+    producto_id = alta_o_actualiza_producto(con, unica)
+    registrar_si_cambio(con, producto_id, unica)
+
+    fuente = SoloTodoFalso(identidad=269594, ofertas=[])
+    ejecutar_comparacion(con, fuente, NotificadorFalso(), CONFIG_CON_COMPARACION, "2024-01-01")
+    ejecutar_comparacion(con, fuente, NotificadorFalso(), CONFIG_CON_COMPARACION, "2024-01-01")
+
+    assert fuente.identidades_pedidas == [("paris", "P2")]
+    assert con.execute(
+        "SELECT producto_solotodo FROM productos WHERE id = ?", (producto_id,)
+    ).fetchone()["producto_solotodo"] == 269594
+
+
+def test_la_segunda_pasada_no_repite_el_aviso(tmp_path):
+    """El cooldown vale igual para esta regla que para las de bajada."""
+    con = abrir(tmp_path / "p.db")
+    _producto_listo(con)
+    fuente = SoloTodoFalso(ofertas=[OfertaAjena("winpy", 80000, "https://winpy.cl/x", True)])
+    avisos = NotificadorFalso()
+
+    primera = ejecutar_comparacion(con, fuente, avisos, CONFIG_CON_COMPARACION, "2024-01-01")
+    segunda = ejecutar_comparacion(con, fuente, avisos, CONFIG_CON_COMPARACION, "2024-01-01")
+
+    assert (primera, segunda) == (1, 0)
+
+
+def test_una_fuente_que_estalla_no_tumba_el_paso(tmp_path):
+    """Y el producto no se marca: lo reintenta el ciclo siguiente."""
+    con = abrir(tmp_path / "p.db")
+    producto_id = _producto_listo(con)
+    fuente = SoloTodoFalso(falla=True)
+
+    assert ejecutar_comparacion(
+        con, fuente, NotificadorFalso(), CONFIG_CON_COMPARACION, "2024-01-01"
+    ) == 0
+    assert con.execute(
+        "SELECT ultima_comparacion FROM productos WHERE id = ?", (producto_id,)
+    ).fetchone()["ultima_comparacion"] is None

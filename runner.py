@@ -16,7 +16,10 @@ from almacen.conexion import abrir                 # noqa: E402
 from almacen.operaciones import (                  # noqa: E402
     alta_o_actualiza_producto,
     dias_de_historico,
+    guardar_identidad,
+    marcar_comparado,
     minimo_historico,
+    productos_a_comparar,
     registrar_alerta,
     registrar_si_cambio,
     ultima_alerta,
@@ -31,6 +34,7 @@ from fuentes.falabella import Falabella            # noqa: E402
 from fuentes.paris import Paris                    # noqa: E402
 from fuentes.solotodo import SoloTodo              # noqa: E402
 from fuentes.transporte import crear_transporte    # noqa: E402
+from nucleo.comparacion import ReglasComparacion, mejor_oferta  # noqa: E402
 from nucleo.evaluador import Reglas, evaluar       # noqa: E402
 from nucleo.frecuencia import debe_notificar       # noqa: E402
 
@@ -264,6 +268,75 @@ def ejecutar_ciclo(con, fuentes, vigilados, busquedas, notificador, config) -> i
     return enviadas
 
 
+def ejecutar_comparacion(con, fuente, notificador, config, desde: str) -> int:
+    """Compara contra el resto del retail lo capturado en este ciclo.
+
+    Es un paso aparte a propósito: si el agregador está caído, la captura que
+    acaba de guardarse sigue siendo válida. Devuelve cuántos avisos mandó.
+    """
+    ajustes = config.get("comparacion") or {}
+    if not ajustes.get("activa", False):
+        return 0
+
+    reglas = ReglasComparacion(
+        caida_minima_pct=float(ajustes.get("caida_minima_pct", 10)),
+        ahorro_minimo_pesos=int(ajustes.get("ahorro_minimo_pesos", 10000)),
+    )
+    cooldown = int(ajustes.get("cooldown_dias", config["alertas"]["cooldown_dias"]))
+    tope = int(ajustes.get("maximo_por_ciclo", 25))
+
+    enviadas = 0
+    for producto in productos_a_comparar(con, desde, tope):
+        try:
+            identificador = producto.producto_solotodo
+            if identificador is None:
+                identificador = fuente.identidad_de(producto.tienda, producto.sku_externo)
+                if identificador is None:
+                    # No hay identidad y no la habrá preguntando otra vez hoy.
+                    # Se marca para que el turno rote.
+                    marcar_comparado(con, producto.id)
+                    continue
+                guardar_identidad(con, producto.id, identificador)
+
+            ofertas = fuente.ofertas_de(identificador)
+            veredicto = mejor_oferta(
+                producto.precio_internet, producto.tienda, ofertas, reglas
+            )
+            # Se marca aquí, con veredicto o sin él: la comparación se hizo.
+            # Si la petición hubiera fallado, estaríamos en el `except` de
+            # abajo y NO se marcaría, para reintentarlo en el ciclo siguiente.
+            marcar_comparado(con, producto.id)
+            if veredicto is None:
+                continue
+
+            anterior = ultima_alerta(con, producto.id, "mejor_precio")
+            if not debe_notificar(anterior, veredicto.oferta.precio, cooldown):
+                continue
+
+            try:
+                notificador.enviar_mejor_precio(producto, veredicto)
+            except Exception as error:
+                # No se registra la alerta: el próximo ciclo lo reintentará.
+                registro.warning(
+                    "no se pudo avisar del mejor precio de %s (%s); se reintentará",
+                    producto.url, error,
+                )
+                continue
+
+            registrar_alerta(con, producto.id, "mejor_precio", veredicto.oferta.precio)
+            enviadas += 1
+        except Exception as error:  # noqa: BLE001
+            # Con traza, por el mismo motivo que en `ejecutar_ciclo`: el sujeto
+            # es el producto, no la fuente, que siempre es la misma.
+            registro.warning(
+                "no se pudo comparar %s (tienda %s): %s",
+                producto.url, producto.tienda, error, exc_info=True,
+            )
+            continue
+
+    return enviadas
+
+
 def construir_notificador(config):
     if config["alertas"].get("canal", "archivo") == "telegram":
         return NotificadorTelegram(
@@ -307,8 +380,15 @@ def main() -> int:
         return 1
 
     con = abrir(RAIZ / "data" / "tracker.db")
+    inicio = con.execute("SELECT datetime('now') AS ahora").fetchone()["ahora"]
+
     enviadas = ejecutar_ciclo(con, fuentes, vigilados, busquedas, notificador, config)
     registro.info("ciclo terminado: %s alertas enviadas", enviadas)
+
+    comparadas = ejecutar_comparacion(
+        con, fuentes["solotodo"], notificador, config, inicio
+    )
+    registro.info("comparación terminada: %s avisos de mejor precio", comparadas)
     return 0
 
 
