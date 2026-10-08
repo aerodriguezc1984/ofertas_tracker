@@ -332,6 +332,26 @@ def ejecutar_comparacion(con, fuente, notificador, config, desde: str) -> int:
                 "no se pudo comparar %s (tienda %s): %s",
                 producto.url, producto.tienda, error, exc_info=True,
             )
+            # Lo que llega aquí es persistente, no transitorio: `identidad_de`
+            # y `ofertas_de` ya atrapan `TiendaBloqueada` por dentro y
+            # devuelven `None` / `[]`, así que un bloqueo o una caída de red
+            # nunca caen en este `except` y siguen el camino normal, donde ya
+            # se marcan. Lo que sí llega es un `JSONDecodeError` sobre un 200
+            # que no es JSON, o un `AttributeError` si la API cambia de forma:
+            # fallos que se repetirán mañana igual que hoy. Combinado con
+            # `ORDER BY ultima_comparacion ASC` (los no marcados van primero),
+            # no marcar aquí formaría un trinquete: este producto roto se
+            # quedaría para siempre en la cabecera de la cola, robándole el
+            # turno a los demás en cuanto el tope del ciclo sea bajo. Se marca
+            # en su propio try/except para que un fallo al escribir no vuelva
+            # a estallar dentro de este manejador.
+            try:
+                marcar_comparado(con, producto.id)
+            except Exception as error_marca:  # noqa: BLE001
+                registro.warning(
+                    "no se pudo marcar %s como comparado tras el fallo: %s",
+                    producto.url, error_marca,
+                )
             continue
 
     return enviadas

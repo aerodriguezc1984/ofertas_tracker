@@ -472,6 +472,30 @@ def test_una_seccion_solotodo_vacia_en_el_yaml_no_tumba_el_ciclo(tmp_path, monke
     assert runner.main() == 0
 
 
+def test_una_seccion_comparacion_vacia_en_el_yaml_no_tumba_el_ciclo(tmp_path, monkeypatch):
+    """Gemela de la de `solotodo`: `comparacion:` sin hijos da `{"comparacion": None}`.
+
+    `ejecutar_comparacion` ya maneja esto bien con `config.get("comparacion") or
+    {}`, pero nada lo vigilaba: mutando ese `or {}` por `, {}` (que no usa el
+    valor por defecto cuando la clave existe con valor `None`), la sección
+    vacía hace estallar `ajustes.get("activa", False)` con `AttributeError`
+    antes de comparar nada, y se pierde el ciclo entero por una errata que
+    debería costar, como mucho, el paso de comparación.
+    """
+    config = {
+        "ejecucion": {"reintentos": 1, "espera_entre_peticiones_seg": [0, 0], "limite_por_busqueda": 15},
+        "historico": {"ventana_minimo_dias": 90, "dias_minimos_para_descuento": 7},
+        "alertas": {"canal": "archivo", "cooldown_dias": 5, "ruta_archivo": "logs/alertas.jsonl"},
+        "comparacion": None,   # la clave está, pero sin hijos
+    }
+
+    monkeypatch.setattr(runner, "RAIZ", tmp_path)
+    monkeypatch.setattr(runner, "cargar_config", lambda ruta: config)
+    monkeypatch.setattr(runner, "cargar_lista_deseos", lambda ruta: ([], []))
+
+    assert runner.main() == 0
+
+
 class SoloTodoFalso:
     """Una fuente que responde a las dos preguntas de la comparación."""
 
@@ -506,7 +530,7 @@ def _producto_listo(con, precio=100000):
 
 def test_la_comparacion_avisa_de_una_oferta_mejor(tmp_path):
     con = abrir(tmp_path / "p.db")
-    _producto_listo(con)
+    producto_id = _producto_listo(con)
     avisos = NotificadorFalso()
     fuente = SoloTodoFalso(
         ofertas=[OfertaAjena("winpy", 80000, "https://winpy.cl/x", True)]
@@ -518,6 +542,42 @@ def test_la_comparacion_avisa_de_una_oferta_mejor(tmp_path):
 
     assert enviadas == 1
     assert fuente.ofertas_pedidas == [269594]
+    # El mecanismo de rotación no lo vigilaba ninguna prueba: borrando las dos
+    # llamadas a `marcar_comparado` de `ejecutar_comparacion`, la suite entera
+    # seguía en verde. Esta aserción es la que lo detecta.
+    assert con.execute(
+        "SELECT ultima_comparacion FROM productos WHERE id = ?", (producto_id,)
+    ).fetchone()["ultima_comparacion"] is not None
+
+
+def test_identidad_no_resuelta_se_marca_sin_pedir_ofertas_ni_avisar(tmp_path):
+    """La rama sin cobertura ninguna: `producto_solotodo` ausente y sin resolver.
+
+    Un `SoloTodoFalso(identidad=None)` sobre un producto que nunca guardó su
+    `producto_solotodo`. Debe marcarse como comparado (para que el turno
+    rote), no debe llegar a pedir ofertas (no hay identidad con la que
+    pedirlas) y no debe mandar ningún aviso.
+    """
+    con = abrir(tmp_path / "p.db")
+    unica = captura(sku="P3", tienda="paris", precio=100000)
+    producto_id = alta_o_actualiza_producto(con, unica)
+    registrar_si_cambio(con, producto_id, unica)
+    # Sin guardar_identidad: producto_solotodo queda NULL.
+
+    avisos = NotificadorFalso()
+    fuente = SoloTodoFalso(identidad=None)
+
+    enviadas = ejecutar_comparacion(
+        con, fuente, avisos, CONFIG_CON_COMPARACION, "2024-01-01"
+    )
+
+    assert enviadas == 0
+    assert fuente.ofertas_pedidas == []
+    assert avisos.enviados == []
+    assert avisos.mejores_precios == []
+    assert con.execute(
+        "SELECT ultima_comparacion FROM productos WHERE id = ?", (producto_id,)
+    ).fetchone()["ultima_comparacion"] is not None
 
 
 def test_la_comparacion_apagada_no_pide_nada(tmp_path):
@@ -528,6 +588,34 @@ def test_la_comparacion_apagada_no_pide_nada(tmp_path):
     config = {**CONFIG_CON_COMPARACION, "comparacion": {"activa": False}}
     assert ejecutar_comparacion(con, fuente, NotificadorFalso(), config, "2024-01-01") == 0
     assert fuente.ofertas_pedidas == []
+
+
+def test_el_tope_por_ciclo_limita_cuantas_ofertas_se_piden(tmp_path):
+    """El tope protege a un tercero: una API pública y gratuita no se llama sin cota.
+
+    Cinco productos, todos vistos en este ciclo, pero `maximo_por_ciclo: 2`:
+    `ejecutar_comparacion` debe pedir ofertas como mucho dos veces, aunque haya
+    cinco candidatos. El `SoloTodoFalso` lleva la cuenta en `ofertas_pedidas`.
+    Esto solo estaba probado en la consulta del almacén (`productos_a_comparar`
+    con un `LIMIT`); nada vigilaba que `ejecutar_comparacion` honrara de verdad
+    `maximo_por_ciclo` al leer la configuración.
+    """
+    con = abrir(tmp_path / "p.db")
+    for i in range(5):
+        unica = captura(sku=f"T{i}", tienda="paris", precio=100000)
+        producto_id = alta_o_actualiza_producto(con, unica)
+        registrar_si_cambio(con, producto_id, unica)
+        guardar_identidad(con, producto_id, 1000 + i)
+
+    fuente = SoloTodoFalso(ofertas=[])
+    config = {
+        **CONFIG_CON_COMPARACION,
+        "comparacion": {**CONFIG_CON_COMPARACION["comparacion"], "maximo_por_ciclo": 2},
+    }
+
+    ejecutar_comparacion(con, fuente, NotificadorFalso(), config, "2024-01-01")
+
+    assert len(fuente.ofertas_pedidas) <= 2
 
 
 def test_la_identidad_se_resuelve_una_sola_vez(tmp_path):
@@ -561,7 +649,16 @@ def test_la_segunda_pasada_no_repite_el_aviso(tmp_path):
 
 
 def test_una_fuente_que_estalla_no_tumba_el_paso(tmp_path):
-    """Y el producto no se marca: lo reintenta el ciclo siguiente."""
+    """Y el producto SÍ se marca: lo que llega a este `except` es persistente.
+
+    `identidad_de` y `ofertas_de` atrapan `TiendaBloqueada` por dentro y
+    devuelven `None` / `[]`, así que un bloqueo o una caída de red nunca
+    llegan aquí: siguen el camino normal y ya se marcan ahí. Lo que sí llega
+    es un `JSONDecodeError` o un `AttributeError` — fallos que se repetirán
+    igual en el ciclo siguiente. No marcar formaría un trinquete: combinado
+    con `ORDER BY ultima_comparacion ASC`, este producto roto se quedaría en
+    la cabecera de la cola para siempre, robándole el turno a los demás.
+    """
     con = abrir(tmp_path / "p.db")
     producto_id = _producto_listo(con)
     fuente = SoloTodoFalso(falla=True)
@@ -571,4 +668,60 @@ def test_una_fuente_que_estalla_no_tumba_el_paso(tmp_path):
     ) == 0
     assert con.execute(
         "SELECT ultima_comparacion FROM productos WHERE id = ?", (producto_id,)
-    ).fetchone()["ultima_comparacion"] is None
+    ).fetchone()["ultima_comparacion"] is not None
+
+
+class SoloTodoParcial:
+    """Falla solo para una identidad: el resto del catálogo responde bien.
+
+    `SoloTodoFalso(falla=True)` no sirve para probar el trinquete: hace
+    estallar CUALQUIER petición, así que el producto sano fallaría también y
+    la prueba no distinguiría «se quedó pegado el roto» de «fallan los dos».
+    """
+
+    nombre = "solotodo"
+
+    def __init__(self, identidad_rota):
+        self.identidad_rota = identidad_rota
+        self.ofertas_pedidas = []
+
+    def identidad_de(self, tienda, sku):
+        return None  # no se usa: los dos productos ya traen identidad guardada
+
+    def ofertas_de(self, producto_solotodo):
+        self.ofertas_pedidas.append(producto_solotodo)
+        if producto_solotodo == self.identidad_rota:
+            raise RuntimeError("la API devolvió HTML")
+        return []
+
+
+def test_un_producto_roto_de_forma_persistente_no_retiene_la_cabecera(tmp_path):
+    """Sin el arreglo del trinquete, el sano no le toca nunca.
+
+    Dos productos y `maximo_por_ciclo: 1`: en el primer ciclo le toca al roto
+    (que estalla siempre) y, como SÍ se marca pese al fallo, en el segundo
+    ciclo le toca al sano. Antes del arreglo, el roto no se marcaba nunca y
+    `ORDER BY ultima_comparacion ASC` lo devolvía en cabeza ciclo tras ciclo,
+    dejando al sano sin comparar jamás.
+    """
+    con = abrir(tmp_path / "p.db")
+    roto_id = _producto_listo(con)  # sku P1, tienda paris, identidad 269594
+    sano = captura(sku="P2", tienda="paris", precio=50000)
+    sano_id = alta_o_actualiza_producto(con, sano)
+    registrar_si_cambio(con, sano_id, sano)
+    guardar_identidad(con, sano_id, 999999)
+
+    fuente = SoloTodoParcial(identidad_rota=269594)
+    config = {
+        **CONFIG_CON_COMPARACION,
+        "comparacion": {**CONFIG_CON_COMPARACION["comparacion"], "maximo_por_ciclo": 1},
+    }
+
+    ejecutar_comparacion(con, fuente, NotificadorFalso(), config, "2024-01-01")
+    # Primer ciclo: le tocó al roto (ultima_comparacion NULL iba primero, y
+    # empate de NULLs se rompe por id ASC, que también lo pone primero).
+    assert fuente.ofertas_pedidas == [269594]
+
+    ejecutar_comparacion(con, fuente, NotificadorFalso(), config, "2024-01-01")
+    # Segundo ciclo: el roto ya quedó marcado, así que ahora le toca al sano.
+    assert fuente.ofertas_pedidas == [269594, 999999]

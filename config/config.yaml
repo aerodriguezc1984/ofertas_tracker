@@ -22,6 +22,15 @@ solotodo:
   # capturarán el mismo artículo en la misma fila, discreparán en el precio de
   # tarjeta, y el histórico crecerá una fila por ciclo sin que ningún precio se
   # haya movido.
+  #
+  # Hay un CUARTO consumidor, aparte de estos tres: la auto-exclusión de la
+  # comparación (`mejor_oferta`, en nucleo/comparacion.py) compara
+  # `oferta.tienda` contra `productos.tienda` para no ofrecernos como
+  # alternativa a nosotros mismos. Eso depende de que el nombre de tienda que
+  # normaliza SoloTodo siga coincidiendo carácter a carácter con nuestro
+  # identificador de tienda. Si dejaran de coincidir, además del histórico
+  # creciendo, la comparación avisaría de que tu producto de Paris está más
+  # barato en Paris, con un enlace a la misma tienda.
   tiendas_excluidas: [paris, falabella]
 comparacion:
   activa: true

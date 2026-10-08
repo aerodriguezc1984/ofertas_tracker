@@ -134,8 +134,15 @@ ya existe.
 
 ### Resuelta una vez, no se vuelve a pedir
 
-`producto_solotodo` no cambia. Una vez asignado, esa petición no se repite nunca. El coste de
-resolución es, como mucho, una petición por producto en toda la vida del producto.
+`producto_solotodo` no cambia. Una vez asignado, esa petición no se repite nunca.
+
+Esto es cierto solo si la identidad llega a resolverse. Si `identidad_de` devuelve `None` —el SKU
+no coincide, o SoloTodo no conoce el producto—, no queda ningún registro de que ya se intentó: el
+producto vuelve a preguntarse en el turno siguiente, y en el siguiente, mientras siga sin resolver.
+No es «una petición por producto en toda la vida del producto»; es una petición **por turno**
+mientras no resuelva. Arreglarlo de verdad exigiría una columna nueva —y por tanto una tercera
+migración— para distinguir «no se ha intentado» de «se intentó y no resolvió», y queda fuera de
+esta etapa.
 
 ### El aviso exige los dos umbrales, no uno
 
@@ -236,9 +243,14 @@ red, sin SQL, sin reloj: se prueba entera con listas construidas a mano.
 5. Si hay veredicto y el cooldown lo permite, se manda el aviso y **solo entonces** se registra la
    alerta. El orden importa: registrar antes de enviar dejaría un aviso perdido contando como
    enviado.
-6. Se marca `ultima_comparacion` **si la comparación llegó a hacerse**, con veredicto o sin él,
-   para que el turno rote. Si la petición falló, **no** se marca: así el ciclo siguiente lo
-   reintenta en vez de mandarlo al final de la cola por un fallo ajeno.
+6. Se marca `ultima_comparacion` también si la petición de `ofertas_de` falla con una excepción
+   inesperada (un `JSONDecodeError` sobre un 200 que no es JSON, un `AttributeError` si la API
+   cambia de forma). `identidad_de` y `ofertas_de` ya atrapan `TiendaBloqueada` por dentro y
+   devuelven `None` / `[]`, así que un bloqueo o una caída de red transitorios nunca llegan a este
+   punto: siguen el camino normal y ya se marcan ahí arriba. Lo que llega aquí es, por descarte,
+   persistente — se repetirá igual mañana —, y no marcarlo formaría un trinquete: combinado con
+   `ORDER BY ultima_comparacion ASC`, el producto roto se quedaría para siempre en la cabecera de
+   la cola, robándoles el turno a los demás.
 
 ## Errores
 
