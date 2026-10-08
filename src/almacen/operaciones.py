@@ -3,6 +3,7 @@
 import sqlite3
 
 from fuentes.base import Captura
+from nucleo.comparacion import ProductoVigilado
 
 
 def alta_o_actualiza_producto(con: sqlite3.Connection, captura: Captura) -> int:
@@ -160,4 +161,72 @@ def registrar_alerta(
              VALUES (?, ?, ?)
         """,
         (producto_id, regla, precio),
+    )
+
+
+def productos_a_comparar(
+    con: sqlite3.Connection, desde: str, limite: int
+) -> list[ProductoVigilado]:
+    """Los productos revisados en este ciclo, el menos comparado primero.
+
+    `desde` es la marca de tiempo con la que arrancó el ciclo: comparar un
+    precio nuestro de hace días contra uno ajeno de hoy produce avisos falsos
+    en las dos direcciones.
+
+    El orden deja primero los que nunca se compararon: SQLite ordena los nulos
+    antes que cualquier valor en ASC, y eso es exactamente lo que queremos. No
+    lo "arregles" con NULLS LAST, o un producto nuevo no se comparará jamás.
+
+    Puede devolver menos de `limite`: los productos sin histórico se descartan
+    después del corte, porque no hay precio nuestro contra el que comparar.
+    """
+    if limite <= 0:
+        return []
+
+    filas = con.execute(
+        """
+        SELECT p.id, p.tienda, p.sku_externo, p.titulo, p.url, p.producto_solotodo,
+               (SELECT h.precio_internet
+                  FROM historico_precios h
+                 WHERE h.producto_id = p.id
+                 ORDER BY h.capturado_el DESC, h.id DESC
+                 LIMIT 1) AS precio_internet
+          FROM productos p
+         WHERE p.ultima_revision >= ?
+         ORDER BY p.ultima_comparacion ASC, p.id ASC
+         LIMIT ?
+        """,
+        (desde, limite),
+    ).fetchall()
+
+    return [
+        ProductoVigilado(
+            id=fila["id"],
+            tienda=fila["tienda"],
+            sku_externo=fila["sku_externo"],
+            titulo=fila["titulo"],
+            url=fila["url"],
+            precio_internet=fila["precio_internet"],
+            producto_solotodo=fila["producto_solotodo"],
+        )
+        for fila in filas
+        if fila["precio_internet"] is not None
+    ]
+
+
+def guardar_identidad(
+    con: sqlite3.Connection, producto_id: int, producto_solotodo: int
+) -> None:
+    """Fija el identificador del agregador. Se resuelve una vez y no cambia."""
+    con.execute(
+        "UPDATE productos SET producto_solotodo = ? WHERE id = ?",
+        (producto_solotodo, producto_id),
+    )
+
+
+def marcar_comparado(con: sqlite3.Connection, producto_id: int) -> None:
+    """Anota que a este producto ya le tocó, para que el turno rote."""
+    con.execute(
+        "UPDATE productos SET ultima_comparacion = datetime('now') WHERE id = ?",
+        (producto_id,),
     )

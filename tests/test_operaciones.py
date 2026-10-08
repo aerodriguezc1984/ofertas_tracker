@@ -1,7 +1,13 @@
 from dataclasses import replace
 
 from almacen.conexion import abrir
-from almacen.operaciones import alta_o_actualiza_producto, registrar_si_cambio
+from almacen.operaciones import (
+    alta_o_actualiza_producto,
+    productos_a_comparar,
+    guardar_identidad,
+    marcar_comparado,
+    registrar_si_cambio,
+)
 from fuentes.base import Captura
 
 
@@ -110,3 +116,87 @@ def test_una_captura_sin_identificador_no_borra_el_que_ya_habia(tmp_path):
         "SELECT producto_solotodo FROM productos WHERE id = ?", (pid,)
     ).fetchone()
     assert fila["producto_solotodo"] == 43835
+
+
+def _producto_con_precio(con, tienda, sku, precio, url=None):
+    """Da de alta un producto y le deja una fila de histórico.
+
+    El ayudante `captura()` de este archivo fija la tienda en «paris» y no
+    acepta cambiarla, así que la tienda y la URL se ajustan con `replace`. No
+    se toca el ayudante: lo usan las pruebas que ya existen.
+    """
+    nueva = replace(
+        captura(precio=precio, sku=sku),
+        tienda=tienda,
+        url=url or f"https://www.{tienda}.cl/n-{sku}.html",
+    )
+    producto_id = alta_o_actualiza_producto(con, nueva)
+    registrar_si_cambio(con, producto_id, nueva)
+    return producto_id
+
+
+def test_solo_se_comparan_los_productos_revisados_en_este_ciclo(tmp_path):
+    con = abrir(tmp_path / "p.db")
+    viejo = _producto_con_precio(con, "paris", "V1", 100000, "https://ejemplo/viejo")
+    con.execute(
+        "UPDATE productos SET ultima_revision = '2000-01-01 00:00:00' WHERE id = ?",
+        (viejo,),
+    )
+    nuevo = _producto_con_precio(con, "paris", "N1", 90000, "https://ejemplo/nuevo")
+
+    a_comparar = productos_a_comparar(con, "2024-01-01 00:00:00", 10)
+
+    assert [p.id for p in a_comparar] == [nuevo]
+    assert a_comparar[0].precio_internet == 90000
+    assert a_comparar[0].tienda == "paris"
+
+
+def test_el_tope_corta_cuantos_se_comparan(tmp_path):
+    con = abrir(tmp_path / "p.db")
+    for i in range(5):
+        _producto_con_precio(con, "paris", f"S{i}", 100000 + i, f"https://ejemplo/{i}")
+
+    assert len(productos_a_comparar(con, "2024-01-01 00:00:00", 2)) == 2
+
+
+def test_un_tope_de_cero_no_devuelve_nada(tmp_path):
+    con = abrir(tmp_path / "p.db")
+    _producto_con_precio(con, "paris", "S0", 100000)
+    assert productos_a_comparar(con, "2024-01-01 00:00:00", 0) == []
+
+
+# --- Review Focus 4: los nulos van primero ---
+def test_el_que_nunca_se_comparo_tiene_preferencia(tmp_path):
+    """SQLite ordena los nulos ANTES en ASC, y eso es justo lo que queremos:
+    un producto nunca comparado no puede esperar detrás de uno de ayer."""
+    con = abrir(tmp_path / "p.db")
+    comparado = _producto_con_precio(con, "paris", "C1", 100000, "https://ejemplo/c")
+    con.execute(
+        "UPDATE productos SET ultima_comparacion = '2026-01-01 00:00:00' WHERE id = ?",
+        (comparado,),
+    )
+    nunca = _producto_con_precio(con, "paris", "N2", 100000, "https://ejemplo/n")
+
+    assert [p.id for p in productos_a_comparar(con, "2024-01-01 00:00:00", 1)] == [nunca]
+
+
+def test_un_producto_sin_historico_no_se_compara(tmp_path):
+    """Sin precio nuestro no hay nada contra lo que comparar."""
+    con = abrir(tmp_path / "p.db")
+    alta_o_actualiza_producto(con, captura(precio=1, sku="SH"))
+    assert productos_a_comparar(con, "2024-01-01 00:00:00", 10) == []
+
+
+def test_guardar_identidad_y_marcar_comparado(tmp_path):
+    con = abrir(tmp_path / "p.db")
+    producto_id = _producto_con_precio(con, "paris", "G1", 100000)
+
+    guardar_identidad(con, producto_id, 269594)
+    marcar_comparado(con, producto_id)
+
+    fila = con.execute(
+        "SELECT producto_solotodo, ultima_comparacion FROM productos WHERE id = ?",
+        (producto_id,),
+    ).fetchone()
+    assert fila["producto_solotodo"] == 269594
+    assert fila["ultima_comparacion"] is not None
