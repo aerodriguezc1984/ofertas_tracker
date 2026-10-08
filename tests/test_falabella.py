@@ -7,10 +7,12 @@ FIXTURES = Path(__file__).parent / "fixtures"
 BUSQUEDA = (FIXTURES / "falabella_busqueda.html").read_text(encoding="utf-8")
 FICHA = (FIXTURES / "falabella_ficha.html").read_text(encoding="utf-8")
 FICHA_VARIANTE = (FIXTURES / "falabella_ficha_variante.html").read_text(encoding="utf-8")
+FICHA_EVENTO = (FIXTURES / "falabella_ficha_evento.html").read_text(encoding="utf-8")
 
 TRES = "https://www.falabella.com/falabella-cl/product/80676157/notebook-tres/80676157"
 DOS = "https://www.falabella.com/falabella-cl/product/80726514/notebook-dos/80726514"
 VARIANTE = "https://www.falabella.com/falabella-cl/product/80725439/mb-neo-13"
+EVENTO = "https://www.falabella.com/falabella-cl/product/154441238/mac-reacondicionado"
 
 
 def test_la_url_de_busqueda_usa_el_parametro_de_falabella():
@@ -104,9 +106,44 @@ def test_la_ficha_toma_titulo_sku_y_stock_del_json_ld():
 
 
 def test_una_ficha_sin_bloque_anclado_se_descarta():
-    """Mejor ninguna captura que la del producto de al lado."""
-    solo_promo = FICHA.replace('"sellerSkuId":"80676157"', '"sellerSkuId":"11111111"')
+    """Mejor ninguna captura que la del producto de al lado.
+
+    Hay que desarmar los DOS campos que anclan: `offeringId` y `sellerSkuId`.
+    Basta con que quede uno para que el bloque siga siendo identificable, que es
+    justo lo que permite leer las fichas donde `sellerSkuId` trae el texto del
+    vendedor en vez del sku.
+    """
+    solo_promo = FICHA.replace(
+        '"offeringId":"80676157","sellerSkuId":"80676157"',
+        '"offeringId":"11111111","sellerSkuId":"11111111"',
+    )
     assert Falabella(lambda u: solo_promo).obtener([Referencia("falabella", TRES)]) == []
+
+
+def test_una_ficha_de_evento_usa_el_precio_del_evento_como_precio_de_internet():
+    """Falabella etiqueta `eventPrice` en vez de `internetPrice` en promociones.
+
+    El patrón no conocía esa etiqueta, así que la ficha se descartaba entera por
+    «no trae precio de internet» y la tienda dejaba de confirmar ese producto.
+    """
+    c = Falabella(lambda u: FICHA_EVENTO).obtener([Referencia("falabella", EVENTO)])[0]
+    assert c.precio_internet == 249990
+    assert c.precio_tarjeta == 239990
+    assert c.precio_normal == 449990
+    assert c.precios_etiquetados is True
+
+
+def test_el_ancla_vale_tambien_cuando_el_sellerskuid_trae_texto():
+    """En las fichas de vendedor, `sellerSkuId` es el nombre del artículo.
+
+    El `offeringId` sí es el sku, y es el que ancla. Si solo se mirara
+    `sellerSkuId`, el bloque de precios de este producto sería inalcanzable y se
+    cogería el del carrusel —o ninguno.
+    """
+    c = Falabella(lambda u: FICHA_EVENTO).obtener([Referencia("falabella", EVENTO)])[0]
+    # Los del carrusel son 119.990 / 209.990: si saliera alguno, el ancla falló.
+    assert c.precio_internet == 249990
+    assert c.precio_normal == 449990
 
 
 def test_una_ficha_cuyo_json_ld_pertenece_a_otra_url_se_descarta():

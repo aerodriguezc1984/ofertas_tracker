@@ -19,9 +19,17 @@ from nucleo.normalizador import a_entero, captura_de_objeto, productos_ld_json, 
 _SKU_EN_URL = re.compile(r"/product/(\d+)/")
 
 # Dentro del JSON incrustado de la ficha, cada precio dice de qué tipo es.
+# `eventPrice` es el mismo precio que `internetPrice` —el que paga cualquiera—
+# pero etiquetado así mientras dura una promoción. Los dos no conviven: la ficha
+# trae uno o el otro.
 _PRECIO_ETIQUETADO = re.compile(
-    r'"type":"(cmrPrice|internetPrice|normalPrice)","price":\["([\d.]+)"\]'
+    r'"type":"(cmrPrice|internetPrice|eventPrice|normalPrice)","price":\["([\d.]+)"\]'
 )
+
+# El bloque de precios de un producto va seguido de sus identificadores. Se
+# aceptan los dos porque `sellerSkuId` no siempre es un sku: en las fichas de
+# vendedor trae el nombre del artículo ("MacBook Air 2017 i5 128G Silver").
+_ANCLA = '"(?:offeringId|sellerSkuId)":"{sku}"' 
 
 
 class Falabella(FuenteJsonLd):
@@ -130,15 +138,21 @@ class Falabella(FuenteJsonLd):
         if base is None:
             return None
 
-        etiquetados = self._precios_anclados(htmlmod.unescape(html), esperado)
-        if "internetPrice" not in etiquetados:
+        # Dos candidatos: el id de la URL y el sku que declara el JSON-LD. En las
+        # fichas con variantes el bloque lleva el primero; en las de vendedor,
+        # donde no hay un bloque por variante, lleva el segundo.
+        etiquetados = self._precios_anclados(
+            htmlmod.unescape(html), (esperado, base.sku_externo)
+        )
+        internet = etiquetados.get("internetPrice") or etiquetados.get("eventPrice")
+        if internet is None:
             return None
 
         tarjeta = etiquetados.get("cmrPrice")
         return replace(
             base,
             sku_externo=esperado,
-            precio_internet=etiquetados["internetPrice"],
+            precio_internet=internet,
             precio_normal=etiquetados.get("normalPrice"),
             precio_tarjeta=tarjeta,
             tarjeta=self.TARJETA if tarjeta is not None else None,
@@ -170,26 +184,32 @@ class Falabella(FuenteJsonLd):
         return None
 
     @staticmethod
-    def _precios_anclados(texto: str, sku: str) -> dict[str, int]:
+    def _precios_anclados(texto: str, skus: tuple[str, ...]) -> dict[str, int]:
         """Los precios DEL producto, no los del carrusel de al lado.
 
         Una ficha trae varias listas `prices`. Buscar hacia delante desde la
         primera captura la de una promoción, que es de otro producto. Así que
-        se ancla al `sellerSkuId` que toca y se retrocede hasta el `"prices":[`
+        se ancla al identificador que toca y se retrocede hasta el `"prices":[`
         más cercano: esa es la lista del producto.
+
+        Los `skus` se prueban EN ORDEN, agotando cada uno antes de pasar al
+        siguiente: en una ficha con variantes todas llevan su propio bloque, y
+        el que vale es el de la variante que el usuario vigila —el id de su
+        URL—, no el que la página traiga primero.
         """
-        anclas = f'"sellerSkuId":"{re.escape(sku)}"'
-        for encontrado in re.finditer(anclas, texto):
-            inicio = texto.rfind('"prices":[', 0, encontrado.start())
-            if inicio == -1:
+        for sku in skus:
+            if not sku:
                 continue
-            pares = _PRECIO_ETIQUETADO.findall(texto[inicio : encontrado.start()])
-            if pares:
-                return {
-                    tipo: valor
-                    for tipo, valor in (
-                        (t, a_entero(v)) for t, v in pares
-                    )
-                    if valor is not None
-                }
+            ancla = _ANCLA.format(sku=re.escape(sku))
+            for encontrado in re.finditer(ancla, texto):
+                inicio = texto.rfind('"prices":[', 0, encontrado.start())
+                if inicio == -1:
+                    continue
+                pares = _PRECIO_ETIQUETADO.findall(texto[inicio : encontrado.start()])
+                if pares:
+                    return {
+                        tipo: valor
+                        for tipo, valor in ((t, a_entero(v)) for t, v in pares)
+                        if valor is not None
+                    }
         return {}
