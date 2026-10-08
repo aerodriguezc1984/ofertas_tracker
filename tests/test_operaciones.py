@@ -200,3 +200,44 @@ def test_guardar_identidad_y_marcar_comparado(tmp_path):
     ).fetchone()
     assert fila["producto_solotodo"] == 269594
     assert fila["ultima_comparacion"] is not None
+
+
+def test_un_tope_negativo_no_devuelve_todo(tmp_path):
+    """`LIMIT -1` en SQLite significa «sin límite»: sin la guarda, un tope
+    negativo devolvería la base entera en vez de nada."""
+    con = abrir(tmp_path / "p.db")
+    for i in range(3):
+        _producto_con_precio(con, "paris", f"T{i}", 100000, f"https://ejemplo/t{i}")
+
+    assert productos_a_comparar(con, "2024-01-01 00:00:00", -1) == []
+
+
+def test_entre_varios_nunca_comparados_manda_el_id(tmp_path):
+    """Todos con `ultima_comparacion` nula empatan en el primer criterio: sin
+    el segundo, el tope podría atender siempre a los mismos."""
+    con = abrir(tmp_path / "p.db")
+    primero = _producto_con_precio(con, "paris", "A1", 100000, "https://ejemplo/a")
+    segundo = _producto_con_precio(con, "paris", "A2", 100000, "https://ejemplo/b")
+
+    assert [p.id for p in productos_a_comparar(con, "2024-01-01 00:00:00", 1)] == [primero]
+    assert primero < segundo
+
+
+def test_con_dos_precios_del_mismo_segundo_gana_el_ultimo(tmp_path):
+    """`capturado_el` tiene resolución de segundo: dos filas pueden empatar, y
+    entonces el precio bueno es el que se escribió después."""
+    con = abrir(tmp_path / "p.db")
+    producto_id = _producto_con_precio(con, "paris", "E1", 111111, "https://ejemplo/e")
+    con.execute("DELETE FROM historico_precios WHERE producto_id = ?", (producto_id,))
+    for precio in (222222, 333333):
+        con.execute(
+            """
+            INSERT INTO historico_precios (producto_id, precio_internet, disponible,
+                                           capturado_el)
+                 VALUES (?, ?, 1, '2026-01-01 12:00:00')
+            """,
+            (producto_id, precio),
+        )
+
+    a_comparar = productos_a_comparar(con, "2024-01-01 00:00:00", 10)
+    assert [p.precio_internet for p in a_comparar] == [333333]
