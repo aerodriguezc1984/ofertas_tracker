@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS productos (
     imagen_url      TEXT,
     creado_el       TEXT    NOT NULL DEFAULT (datetime('now')),
     ultima_revision TEXT,
+    ultima_comparacion TEXT,
     UNIQUE (tienda, sku_externo)
 );
 

@@ -285,7 +285,12 @@ def test_nuestra_propia_tienda_no_compite_consigo_misma():
 # --- Review Focus 1: nuestro precio a cero ---
 @pytest.mark.parametrize("precio_nuestro", [0, -1])
 def test_un_precio_nuestro_no_positivo_no_compara(precio_nuestro):
-    """El porcentaje divide por nuestro precio: un cero tumbaría el paso entero."""
+    """Un precio nuestro no positivo no da veredicto NI excepción.
+
+    Quien lo garantiza es el filtro de candidatas, no una guarda aparte: con
+    `precio_nuestro <= 0` ninguna oferta positiva puede ser menor, así que la
+    división ni se alcanza.
+    """
     assert mejor_oferta(precio_nuestro, "paris", [oferta(precio=1)], REGLAS) is None
 
 
@@ -364,16 +369,15 @@ def mejor_oferta(
     reglas: ReglasComparacion,
 ) -> VeredictoMejorPrecio | None:
     """La mejor oferta ajena que supera los dos umbrales, o None."""
-    if precio_nuestro <= 0:
-        # El porcentaje divide por este número. Y un producto sin precio no
-        # tiene con qué comparar: no es un caso de error, es un «todavía no».
-        return None
-
     candidatas = [
         oferta
         for oferta in ofertas
         if oferta.disponible
         and oferta.precio > 0
+        # Esta condición es el ÚNICO cerrojo de la división de más abajo: si no
+        # hay candidatas no hay veredicto, y si las hay entonces
+        # precio_nuestro > oferta.precio > 0, así que el denominador nunca es
+        # cero. No la quites creyendo que solo descarta ofertas caras.
         and oferta.precio < precio_nuestro
         # Nuestro propio producto aparece en su lista de entidades: el
         # agregador también cubre nuestra tienda. Compararse consigo mismo
@@ -398,9 +402,9 @@ def mejor_oferta(
 - [ ] **Paso 4: Ejecutar y comprobar que pasan**
 
 Ejecuta: `python -m pytest -v`
-Esperado: **156 pasadas** (144 + 12).
+Esperado: **157 pasadas** (144 + 13).
 
-- [ ] **Paso 5: Falsar tres de las pruebas nuevas**
+- [ ] **Paso 5: Falsar cuatro de las pruebas nuevas**
 
 Una por una, restaurando entre medias:
 
@@ -411,7 +415,14 @@ Una por una, restaurando entre medias:
 2. **La propia tienda.** Quita la condición `and oferta.tienda != tienda_nuestra`.
    Esperado: `test_nuestra_propia_tienda_no_compite_consigo_misma` roja porque **sí** hay
    veredicto (`assert <VeredictoMejorPrecio...> is None`).
-3. **Los dos umbrales.** Cambia el `or` de la última guarda por `and`.
+3. **El cerrojo de la división.** Quita del filtro la línea `and oferta.precio < precio_nuestro`.
+   Esperado: el caso `[0]` de `test_un_precio_nuestro_no_positivo_no_compara` rojo con
+   `ZeroDivisionError: division by zero` —el daño que el docstring nombra—. El caso `[-1]` sigue
+   verde, y está bien: ahí el ahorro sale negativo y el umbral lo tumba antes de dividir.
+   **Un solo cerrojo por riesgo.** Una segunda guarda `if precio_nuestro <= 0` haría que ninguna
+   mutación de un solo punto pudiera exponer la división, y la prueba pasaría hiciera lo que
+   hiciera el código.
+4. **Los dos umbrales.** Cambia el `or` de la última guarda por `and`.
    Esperado: `test_cumplir_el_porcentaje_sin_el_ahorro_no_basta` **y**
    `test_cumplir_el_ahorro_sin_el_porcentaje_no_basta` rojas, las dos. Si solo se pone roja una,
    la mutación no demuestra lo que dice: vuelve a mirarla.
@@ -684,7 +695,7 @@ Y los dos métodos dentro de la clase `SoloTodo`, después de `obtener`:
 - [ ] **Paso 5: Ejecutar y comprobar que pasan**
 
 Ejecuta: `python -m pytest -v`
-Esperado: **162 pasadas** (156 + 6).
+Esperado: **163 pasadas** (157 + 6).
 
 - [ ] **Paso 6: Falsar dos de las pruebas nuevas**
 
@@ -697,7 +708,7 @@ Esperado: **162 pasadas** (156 + 6).
    Esperado: `test_las_ofertas_salen_de_las_entidades_del_producto` roja porque la lista trae una
    tercera tupla con `None` de precio.
 
-Restaura y confirma las 162.
+Restaura y confirma las 163.
 
 - [ ] **Paso 7: Commit**
 
@@ -906,7 +917,7 @@ def marcar_comparado(con: sqlite3.Connection, producto_id: int) -> None:
 - [ ] **Paso 4: Ejecutar y comprobar que pasan**
 
 Ejecuta: `python -m pytest -v`
-Esperado: **168 pasadas** (162 + 6).
+Esperado: **169 pasadas** (163 + 6).
 
 - [ ] **Paso 5: Falsar dos de las pruebas nuevas**
 
@@ -918,7 +929,7 @@ Esperado: **168 pasadas** (162 + 6).
    Esperado: `test_solo_se_comparan_los_productos_revisados_en_este_ciclo` roja con **dos** ids en
    la lista en vez de uno.
 
-Restaura y confirma las 168.
+Restaura y confirma las 169.
 
 - [ ] **Paso 6: Commit**
 
@@ -1128,7 +1139,7 @@ Añade `redactar_mejor_precio` y los dos tipos a los imports de ese archivo.
 - [ ] **Paso 6: Ejecutar y comprobar que pasan**
 
 Ejecuta: `python -m pytest -v`
-Esperado: **172 pasadas** (168 + 4).
+Esperado: **173 pasadas** (169 + 4).
 
 - [ ] **Paso 7: Falsar una de las pruebas nuevas**
 
@@ -1136,7 +1147,7 @@ Cambia en `redactar_mejor_precio` la línea `veredicto.oferta.url` por `producto
 Esperado: `test_el_aviso_enlaza_a_la_tienda_ajena_no_a_la_nuestra` roja por **las dos** aserciones
 —falta la ajena y sobra la nuestra—, no por un `AttributeError`.
 
-Restaura y confirma las 172.
+Restaura y confirma las 173.
 
 - [ ] **Paso 8: Commit**
 
@@ -1386,7 +1397,7 @@ def ejecutar_comparacion(con, fuente, notificador, config, desde: str) -> int:
 - [ ] **Paso 4: Ejecutar y comprobar que pasan**
 
 Ejecuta: `python -m pytest -v`
-Esperado: **177 pasadas** (172 + 5).
+Esperado: **178 pasadas** (173 + 5).
 
 - [ ] **Paso 5: Falsar dos de las pruebas nuevas**
 
@@ -1398,7 +1409,7 @@ Esperado: **177 pasadas** (172 + 5).
    Esperado: `test_la_identidad_se_resuelve_una_sola_vez` roja con **dos** entradas en
    `identidades_pedidas`, no con un `KeyError`.
 
-Restaura y confirma las 177.
+Restaura y confirma las 178.
 
 - [ ] **Paso 6: Cablear la configuración y el arranque**
 
@@ -1577,8 +1588,8 @@ git commit -m "Cablea la comparación entre tiendas en el ciclo y añade su sond
 |---|---|
 | (partida) | 142 |
 | 1 — la columna | 144 |
-| 2 — el núcleo | 156 |
-| 3 — las peticiones | 162 |
-| 4 — las consultas | 168 |
-| 5 — el aviso | 172 |
-| 6 — el paso del ciclo | 177 |
+| 2 — el núcleo | 157 |
+| 3 — las peticiones | 163 |
+| 4 — las consultas | 169 |
+| 5 — el aviso | 173 |
+| 6 — el paso del ciclo | 178 |

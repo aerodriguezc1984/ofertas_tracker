@@ -70,3 +70,45 @@ def test_una_base_anterior_gana_la_columna_sin_perder_sus_datos(tmp_path):
     assert (fila["tienda"], fila["sku_externo"], fila["titulo"]) == (
         "paris", "S1", "Notebook",
     )
+
+
+def test_la_base_nueva_trae_la_columna_de_comparacion(tmp_path):
+    """Una base creada hoy no necesita migración: la columna viene del esquema."""
+    con = abrir(tmp_path / "nueva.db")
+    columnas = {f["name"] for f in con.execute("PRAGMA table_info(productos)")}
+    assert "ultima_comparacion" in columnas
+
+
+def test_una_base_sin_la_columna_de_comparacion_se_migra(tmp_path):
+    """`CREATE TABLE IF NOT EXISTS` no añade columnas a una tabla que ya existe."""
+    ruta = tmp_path / "vieja.db"
+    vieja = sqlite3.connect(ruta)
+    vieja.executescript(
+        """
+        CREATE TABLE productos (
+            id                INTEGER PRIMARY KEY,
+            tienda            TEXT    NOT NULL,
+            sku_externo       TEXT    NOT NULL,
+            ean               TEXT,
+            producto_solotodo INTEGER,
+            titulo            TEXT    NOT NULL,
+            url               TEXT    NOT NULL UNIQUE,
+            imagen_url        TEXT,
+            creado_el         TEXT    NOT NULL DEFAULT (datetime('now')),
+            ultima_revision   TEXT,
+            UNIQUE (tienda, sku_externo)
+        );
+        INSERT INTO productos (tienda, sku_externo, titulo, url)
+             VALUES ('paris', '123', 'Un notebook', 'https://ejemplo/1');
+        """
+    )
+    vieja.commit()
+    vieja.close()
+
+    con = abrir(ruta)
+    columnas = {f["name"] for f in con.execute("PRAGMA table_info(productos)")}
+    assert "ultima_comparacion" in columnas
+    # Y la fila que ya estaba sigue ahí, con la columna nueva a nulo.
+    fila = con.execute("SELECT sku_externo, ultima_comparacion FROM productos").fetchone()
+    assert fila["sku_externo"] == "123"
+    assert fila["ultima_comparacion"] is None

@@ -4,9 +4,10 @@ import json
 import pytest
 
 from avisos.archivo import NotificadorArchivo
-from avisos.base import redactar
+from avisos.base import redactar, redactar_mejor_precio
 from avisos.telegram import EnvioFallido, NotificadorTelegram, TelegramMalConfigurado
 from fuentes.base import Captura
+from nucleo.comparacion import OfertaAjena, ProductoVigilado, VeredictoMejorPrecio
 from nucleo.evaluador import Veredicto
 
 CAPTURA = Captura(
@@ -14,6 +15,24 @@ CAPTURA = Captura(
     url="https://www.paris.cl/n-S1.html", precio_internet=89990, precio_normal=129990,
 )
 VEREDICTO = Veredicto(regla="precio_maximo", precio=89990, motivo="por debajo de tu tope")
+
+PRODUCTO = ProductoVigilado(
+    id=1,
+    tienda="paris",
+    sku_externo="106450999",
+    titulo="Notebook IdeaPad Slim 3",
+    url="https://www.paris.cl/notebook-106450999.html",
+    precio_internet=499990,
+    producto_solotodo=269594,
+)
+
+VEREDICTO_MEJOR_PRECIO = VeredictoMejorPrecio(
+    oferta=OfertaAjena(
+        tienda="winpy", precio=399990, url="https://www.winpy.cl/venta/notebook/"
+    ),
+    ahorro=100000,
+    porcentaje=20.0,
+)
 
 
 def test_el_mensaje_lleva_lo_imprescindible():
@@ -94,6 +113,39 @@ def test_telegram_no_filtra_el_token_cuando_falla_la_red():
     assert TOKEN not in repr(error.value)
     assert error.value.__cause__ is None
     assert error.value.__context__ is None or TOKEN not in str(error.value.__context__)
+
+
+def test_el_aviso_nombra_las_dos_tiendas_y_el_ahorro():
+    texto = redactar_mejor_precio(PRODUCTO, VEREDICTO_MEJOR_PRECIO)
+    assert "paris" in texto
+    assert "winpy" in texto
+    assert "$499.990" in texto
+    assert "$399.990" in texto
+    assert "$100.000" in texto
+
+
+def test_el_aviso_enlaza_a_la_tienda_ajena_no_a_la_nuestra():
+    """El enlace útil es el de donde está barato, no el de donde ya miramos."""
+    texto = redactar_mejor_precio(PRODUCTO, VEREDICTO_MEJOR_PRECIO)
+    assert VEREDICTO_MEJOR_PRECIO.oferta.url in texto
+    assert PRODUCTO.url not in texto
+
+
+def test_el_aviso_dice_de_donde_sale_el_precio_ajeno():
+    """Nuestro precio es de hoy; el ajeno es de SoloTodo y puede ir rezagado."""
+    assert "SoloTodo" in redactar_mejor_precio(PRODUCTO, VEREDICTO_MEJOR_PRECIO)
+
+
+def test_el_notificador_de_archivo_escribe_el_aviso_de_mejor_precio(tmp_path):
+    ruta = tmp_path / "alertas.jsonl"
+    NotificadorArchivo(ruta).enviar_mejor_precio(PRODUCTO, VEREDICTO_MEJOR_PRECIO)
+
+    linea = json.loads(ruta.read_text(encoding="utf-8").strip())
+    assert linea["regla"] == "mejor_precio"
+    assert linea["tienda"] == "paris"
+    assert linea["tienda_ajena"] == "winpy"
+    assert linea["precio"] == 399990
+    assert linea["url"] == VEREDICTO_MEJOR_PRECIO.oferta.url
 
 
 def test_un_fallo_al_redactar_no_se_disfraza_de_fallo_de_red():
