@@ -278,6 +278,17 @@ def test_sin_catalogo_no_hay_ofertas_ni_identidad():
     assert fuente.identidad_de("paris", "1") is None
 
 
+def test_un_catalogo_caido_no_estalla_aunque_las_ofertas_respondan():
+    """El catálogo puede fallar mientras el endpoint de ofertas responde.
+
+    Sin la guarda, `tiendas` llega a `None` y el código revienta al buscar el
+    nombre de la tienda. La prueba del transporte vacío no lo veía: ahí fallan
+    las dos peticiones y el resultado es el mismo por otro camino.
+    """
+    traer, _ = transporte_de({URL_OFERTAS: ENTIDADES_DE_PRODUCTO})
+    assert SoloTodo(traer).ofertas_de(43835) == []
+
+
 def test_un_catalogo_vacio_no_se_cachea_y_se_reintenta():
     """Un `[]` en `/stores/` no es un fallo de transporte, así que no cae en el
     `except TiendaBloqueada`, pero tampoco es un éxito: cachear `{}` dejaría
