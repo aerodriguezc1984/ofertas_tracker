@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 
 from fuentes.base import Candidato, Captura, Referencia
 from fuentes.jsonld import FuenteJsonLd
-from nucleo.normalizador import a_captura, a_entero, productos_ld_json, texto
+from nucleo.normalizador import a_entero, captura_de_objeto, productos_ld_json, texto
 
 # Las fichas son /falabella-cl/product/<id>/<slug>/<id>
 _SKU_EN_URL = re.compile(r"/product/(\d+)/")
@@ -104,43 +104,70 @@ class Falabella(FuenteJsonLd):
         )
 
     def captura_de_ficha(self, html: str, url: str) -> Captura | None:
-        """El JSON-LD da título, SKU y stock; el JSON incrustado, los tres precios.
+        """El JSON-LD da título y stock; el JSON incrustado, los tres precios.
 
         El bloque JSON-LD llega VÁLIDO y desescaparlo lo rompería: su nombre
-        lleva un `&quot;` dentro de la cadena. Por eso `a_captura` recibe el HTML
-        crudo.
+        lleva un `&quot;` dentro de la cadena. Por eso se analiza el HTML crudo.
 
         El desescapado que sí se aplica abajo es defensivo, no imprescindible:
         hoy la carga de precios de la ficha llega sin escapar y el patrón casa
         igual con o sin él. Se mantiene porque Falabella sí escapa el JSON-LD de
         su página de búsqueda, y una página que cambiara de criterio dejaría de
         capturarse en silencio.
+
+        El sku se fuerza al id de la URL, que es como se descubrió el producto
+        en la búsqueda. El del JSON-LD no sirve: ver `_bloque_de_esta_ficha`.
         """
-        base = a_captura(html, url, self.nombre)
+        esperado = self._sku_de(url)
+        if esperado is None:
+            return None
+
+        objeto = self._bloque_de_esta_ficha(html, url)
+        if objeto is None:
+            return None
+
+        base = captura_de_objeto(objeto, url, self.nombre)
         if base is None:
             return None
 
-        esperado = self._sku_de(url)
-        if esperado is None or base.sku_externo != esperado:
-            # `a_captura` devuelve el PRIMER Product utilizable de la página. Si
-            # algún día no es el de esta URL, el anclaje seguiría su sku —que sí
-            # aparece en los carruseles— y guardaríamos el precio de otro
-            # producto bajo la URL vigilada. No falla: miente.
-            return None
-
-        etiquetados = self._precios_anclados(htmlmod.unescape(html), base.sku_externo)
+        etiquetados = self._precios_anclados(htmlmod.unescape(html), esperado)
         if "internetPrice" not in etiquetados:
             return None
 
         tarjeta = etiquetados.get("cmrPrice")
         return replace(
             base,
+            sku_externo=esperado,
             precio_internet=etiquetados["internetPrice"],
             precio_normal=etiquetados.get("normalPrice"),
             precio_tarjeta=tarjeta,
             tarjeta=self.TARJETA if tarjeta is not None else None,
             precios_etiquetados=True,
         )
+
+    @staticmethod
+    def _bloque_de_esta_ficha(html: str, url: str) -> dict | None:
+        """El bloque JSON-LD que dice pertenecer a ESTA ficha.
+
+        No vale quedarse con el primer Product de la página: los carruseles
+        publican los suyos, y usar uno guardaría el precio de otro artículo bajo
+        la URL vigilada. No falla: miente.
+
+        Y tampoco vale comparar el sku, que es lo que se hacía antes. Falabella
+        publica en la ficha la **variante por defecto**, cuyo sku no es el id
+        que va en la URL: `/product/80725439/...` declara `sku: 80725441`. Esa
+        comparación empezó a rechazar todas las fichas de productos con
+        variantes, y con ellas la confirmación de precios de la tienda entera.
+
+        Lo que sí identifica al bloque es su `@id`: vale la URL pedida, a veces
+        con la variante añadida al final.
+        """
+        pedida = url.rstrip("/")
+        for objeto in productos_ld_json(html, incluir_listas=False):
+            suyo = str(objeto.get("@id") or objeto.get("url") or "").rstrip("/")
+            if suyo.startswith(pedida):
+                return objeto
+        return None
 
     @staticmethod
     def _precios_anclados(texto: str, sku: str) -> dict[str, int]:

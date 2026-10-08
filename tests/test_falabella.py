@@ -6,9 +6,11 @@ from fuentes.falabella import Falabella
 FIXTURES = Path(__file__).parent / "fixtures"
 BUSQUEDA = (FIXTURES / "falabella_busqueda.html").read_text(encoding="utf-8")
 FICHA = (FIXTURES / "falabella_ficha.html").read_text(encoding="utf-8")
+FICHA_VARIANTE = (FIXTURES / "falabella_ficha_variante.html").read_text(encoding="utf-8")
 
 TRES = "https://www.falabella.com/falabella-cl/product/80676157/notebook-tres/80676157"
 DOS = "https://www.falabella.com/falabella-cl/product/80726514/notebook-dos/80726514"
+VARIANTE = "https://www.falabella.com/falabella-cl/product/80725439/mb-neo-13"
 
 
 def test_la_url_de_busqueda_usa_el_parametro_de_falabella():
@@ -107,12 +109,40 @@ def test_una_ficha_sin_bloque_anclado_se_descarta():
     assert Falabella(lambda u: solo_promo).obtener([Referencia("falabella", TRES)]) == []
 
 
-def test_una_ficha_cuyo_json_ld_describe_otro_producto_se_descarta():
-    """El sku ajeno es justo el del carrusel de promoción de la fixture.
+def test_una_ficha_cuyo_json_ld_pertenece_a_otra_url_se_descarta():
+    """La identidad la da el `@id` del bloque, no su sku.
 
-    Sin la guarda, `a_captura` devuelve ese producto, el anclaje encuentra su
-    `sellerSkuId` en el bloque de promoción, y el precio de OTRO producto se
-    guardaría bajo la URL vigilada. No falla: miente.
+    Si el bloque dice pertenecer a otra ficha —el carrusel de al lado—, usarlo
+    guardaría el producto equivocado bajo la URL vigilada. No falla: miente.
+
+    El sku NO sirve para esto desde que Falabella publica en la ficha la
+    variante por defecto, cuyo sku no es el id de la URL. Ver
+    `test_una_ficha_cuya_variante_cambia_el_sku_se_captura_igual`.
     """
-    ajena = FICHA.replace('"sku":"80676157","name"', '"sku":"99999999","name"')
+    ajena = FICHA.replace("/product/80676157/notebook-tres", "/product/99999999/otro")
     assert Falabella(lambda u: ajena).obtener([Referencia("falabella", TRES)]) == []
+
+
+def test_una_ficha_cuya_variante_cambia_el_sku_se_captura_igual():
+    """Falabella sirve en el JSON-LD la variante por defecto, no el id de la URL.
+
+    La ficha de `/product/80725439/...` declara `sku: 80725441`, que es otra
+    variante del mismo artículo. Antes la guarda comparaba ese sku contra el id
+    de la URL y descartaba la ficha entera: Falabella dejó de confirmarse y, con
+    ello, de alertar y de compararse.
+    """
+    c = Falabella(lambda u: FICHA_VARIANTE).obtener([Referencia("falabella", VARIANTE)])[0]
+    assert c.precio_internet == 759990
+    assert c.precio_normal == 869990
+    assert c.precios_etiquetados is True
+
+
+def test_la_identidad_se_mantiene_en_el_id_de_la_url_y_no_en_el_de_la_variante():
+    """El sku guardado es el de la URL, que es como se descubrió el producto.
+
+    Si la ficha impusiera el sku de la variante, el mismo artículo tendría dos
+    identidades —una por la búsqueda y otra por la ficha— y chocaría contra el
+    UNIQUE de `productos.url` al darse de alta por segunda vez.
+    """
+    c = Falabella(lambda u: FICHA_VARIANTE).obtener([Referencia("falabella", VARIANTE)])[0]
+    assert c.sku_externo == "80725439"

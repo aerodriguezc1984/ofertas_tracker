@@ -108,52 +108,65 @@ def _tipo_es(objeto: dict, tipo: str) -> bool:
     return valor == tipo
 
 
+def captura_de_objeto(objeto: dict, url: str, tienda: str) -> Captura | None:
+    """Un bloque JSON-LD de Product convertido en Captura, o None si no sirve.
+
+    Está separada de `a_captura` porque hay fuentes que no pueden quedarse con
+    el primer bloque utilizable: necesitan elegir cuál es el suyo y convertir
+    solo ese. Ver `Falabella.captura_de_ficha`.
+    """
+    ofertas = objeto.get("offers") or {}
+    if isinstance(ofertas, list):
+        ofertas = ofertas[0] if ofertas else {}
+
+    precio = a_entero(ofertas.get("price"))
+    if precio is None:
+        return None
+
+    sku = texto(objeto.get("sku"))
+    if not sku:
+        # La identidad del producto es (tienda, sku_externo). Sin sku, dos
+        # productos distintos colapsarían en la misma fila: tan inventado
+        # como un precio en cero.
+        return None
+
+    imagen = objeto.get("image")
+    if isinstance(imagen, list):
+        imagen = imagen[0] if imagen else None
+
+    disponibilidad = str(ofertas.get("availability") or "")
+    # Cuando la tienda no declara stock, se asume disponible: lo contrario
+    # silenciaría todas las alertas de las tiendas que no publican el dato.
+    disponible = "outofstock" not in disponibilidad.lower().replace("/", "")
+
+    # Algunas tiendas publican la cadena "null" en vez de omitir el campo.
+    ean = texto(objeto.get("gtin13") or objeto.get("gtin14") or objeto.get("gtin"))
+    if ean.lower() in ("", "null", "none"):
+        ean = None
+
+    return Captura(
+        tienda=tienda,
+        sku_externo=sku,
+        titulo=texto(objeto.get("name")),
+        url=url,
+        precio_internet=precio,
+        precio_normal=a_entero(objeto.get("listPrice")),
+        disponible=disponible,
+        imagen_url=imagen if isinstance(imagen, str) else None,
+        ean=ean,
+    )
+    return None
+
+
 def a_captura(html: str, url: str, tienda: str) -> Captura | None:
     """La Captura de la ficha, o None si ningún bloque da precio y sku utilizables.
 
     Una página puede traer varios bloques JSON-LD (Falabella, abc.cl publican
     varios Product); que uno no sirva no debe esconder al siguiente, así que un
-    bloque inservible se salta con `continue`, nunca con `return`.
+    bloque inservible se salta, nunca corta la búsqueda.
     """
     for objeto in productos_ld_json(html, incluir_listas=False):
-        ofertas = objeto.get("offers") or {}
-        if isinstance(ofertas, list):
-            ofertas = ofertas[0] if ofertas else {}
-
-        precio = a_entero(ofertas.get("price"))
-        if precio is None:
-            continue
-
-        sku = texto(objeto.get("sku"))
-        if not sku:
-            # La identidad del producto es (tienda, sku_externo). Sin sku, dos
-            # productos distintos colapsarían en la misma fila: tan inventado
-            # como un precio en cero.
-            continue
-
-        imagen = objeto.get("image")
-        if isinstance(imagen, list):
-            imagen = imagen[0] if imagen else None
-
-        disponibilidad = str(ofertas.get("availability") or "")
-        # Cuando la tienda no declara stock, se asume disponible: lo contrario
-        # silenciaría todas las alertas de las tiendas que no publican el dato.
-        disponible = "outofstock" not in disponibilidad.lower().replace("/", "")
-
-        # Algunas tiendas publican la cadena "null" en vez de omitir el campo.
-        ean = texto(objeto.get("gtin13") or objeto.get("gtin14") or objeto.get("gtin"))
-        if ean.lower() in ("", "null", "none"):
-            ean = None
-
-        return Captura(
-            tienda=tienda,
-            sku_externo=sku,
-            titulo=texto(objeto.get("name")),
-            url=url,
-            precio_internet=precio,
-            precio_normal=a_entero(objeto.get("listPrice")),
-            disponible=disponible,
-            imagen_url=imagen if isinstance(imagen, str) else None,
-            ean=ean,
-        )
+        captura = captura_de_objeto(objeto, url, tienda)
+        if captura is not None:
+            return captura
     return None
