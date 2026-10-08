@@ -2,8 +2,9 @@
 
 import requests
 
-from avisos.base import redactar
+from avisos.base import redactar, redactar_mejor_precio
 from fuentes.base import Captura
+from nucleo.comparacion import ProductoVigilado, VeredictoMejorPrecio
 from nucleo.evaluador import Veredicto
 
 
@@ -26,10 +27,18 @@ class NotificadorTelegram:
         self._sesion = sesion if sesion is not None else requests.Session()
 
     def enviar(self, captura: Captura, veredicto: Veredicto) -> None:
+        self._publicar(redactar(captura, veredicto))
+
+    def enviar_mejor_precio(
+        self, producto: ProductoVigilado, veredicto: VeredictoMejorPrecio
+    ) -> None:
+        self._publicar(redactar_mejor_precio(producto, veredicto))
+
+    def _publicar(self, texto: str) -> None:
         url = f"https://api.telegram.org/bot{self._token}/sendMessage"
         cuerpo = {
             "chat_id": self._chat_id,
-            "text": redactar(captura, veredicto),
+            "text": texto,
             "disable_web_page_preview": False,
         }
 
