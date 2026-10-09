@@ -311,3 +311,42 @@ def test_un_catalogo_vacio_no_se_cachea_y_se_reintenta():
     assert fuente.buscar("notebook", limite=5) == []           # catálogo vacío
     assert [c.tienda for c in fuente.buscar("notebook", limite=5)] == ["abcdin"]
     assert len(intentos) == 2                                   # se pidió dos veces
+
+
+URL_POR_CATEGORIA = "https://api.solotodo.com/entities/?categories=15&is_active=true"
+URL_MIXTA = "https://api.solotodo.com/entities/?search=frio&categories=15&is_active=true"
+
+
+def test_la_busqueda_por_categoria_pide_el_filtro_de_categoria():
+    """La palabra clave de este agregador no acota y la categoría sí.
+
+    El ayudante casa por URL exacta: si `categories` no llegara a la
+    consulta, el transporte lanzaría y esto devolvería []. La prueba fija
+    así la forma de la URL sin una aserción aparte.
+    """
+    traer, _ = transporte_de({
+        "https://api.solotodo.com/stores/": CATALOGO,
+        URL_POR_CATEGORIA: BUSQUEDA,
+    })
+    capturas = SoloTodo(traer, excluidas=["paris", "falabella"]).buscar(
+        None, limite=5, categoria=15
+    )
+    assert [c.tienda for c in capturas] == ["abcdin"]
+
+
+def test_el_termino_y_la_categoria_pueden_ir_juntos():
+    traer, _ = transporte_de({
+        "https://api.solotodo.com/stores/": CATALOGO,
+        URL_MIXTA: BUSQUEDA,
+    })
+    capturas = SoloTodo(traer, excluidas=["paris", "falabella"]).buscar(
+        "frio", limite=5, categoria=15
+    )
+    assert [c.tienda for c in capturas] == ["abcdin"]
+
+
+def test_una_busqueda_sin_termino_ni_categoria_no_pide_nada():
+    """Sin una cosa ni la otra, `is_active=true` traería el catálogo entero."""
+    traer, pedidas = transporte_de({"https://api.solotodo.com/stores/": CATALOGO})
+    assert SoloTodo(traer).buscar(None, limite=5) == []
+    assert not [u for u in pedidas if "/entities/" in u]

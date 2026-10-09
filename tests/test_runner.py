@@ -41,9 +41,10 @@ class FuenteFalsa:
             raise RuntimeError("la tienda se cayó")
         return self._capturas
 
-    def buscar(self, termino, limite):
+    def buscar(self, termino, limite, categoria=None):
         if self._estalla:
             raise RuntimeError("la tienda se cayó")
+        self.buscado = (termino, limite, categoria)
         return self._capturas
 
 
@@ -246,7 +247,7 @@ class FuenteConBusquedaInferida:
         self.fichas_pedidas.extend(r.url for r in referencias)
         return [c for c in self.exactas if any(c.url == r.url for r in referencias)]
 
-    def buscar(self, termino, limite):
+    def buscar(self, termino, limite, categoria=None):
         return list(self.inferidas)
 
 
@@ -725,3 +726,73 @@ def test_un_producto_roto_de_forma_persistente_no_retiene_la_cabecera(tmp_path):
     ejecutar_comparacion(con, fuente, NotificadorFalso(), config, "2024-01-01")
     # Segundo ciclo: el roto ya quedó marcado, así que ahora le toca al sano.
     assert fuente.ofertas_pedidas == [269594, 999999]
+
+
+def test_una_busqueda_puede_pedir_una_categoria_en_vez_de_un_termino(tmp_path):
+    """Una categoría acota de verdad; una palabra clave, en un agregador, no."""
+    ruta = tmp_path / "lista.yaml"
+    ruta.write_text(
+        """
+busquedas:
+  - tienda: solotodo
+    fuente: solotodo
+    categoria: 15
+    reglas:
+      descuento_minimo_pct: 20
+""",
+        encoding="utf-8",
+    )
+    _, busquedas = cargar_lista_deseos(ruta)
+    assert busquedas[0]["categoria"] == 15
+    assert busquedas[0]["termino"] is None
+
+
+def test_una_busqueda_sin_termino_ni_categoria_se_salta(tmp_path):
+    """Sin una cosa ni la otra no hay nada que buscar."""
+    ruta = tmp_path / "lista.yaml"
+    ruta.write_text(
+        """
+busquedas:
+  - tienda: solotodo
+    reglas:
+      descuento_minimo_pct: 20
+""",
+        encoding="utf-8",
+    )
+    _, busquedas = cargar_lista_deseos(ruta)
+    assert busquedas == []
+
+
+def test_una_busqueda_por_termino_sigue_sin_categoria(tmp_path):
+    """Las entradas que ya existían no cambian de forma."""
+    ruta = tmp_path / "lista.yaml"
+    ruta.write_text(
+        """
+busquedas:
+  - tienda: paris
+    termino: notebook
+    reglas:
+      precio_maximo: 400000
+""",
+        encoding="utf-8",
+    )
+    _, busquedas = cargar_lista_deseos(ruta)
+    assert busquedas[0]["termino"] == "notebook"
+    assert busquedas[0]["categoria"] is None
+
+
+def test_el_ciclo_le_pasa_la_categoria_a_la_fuente(tmp_path):
+    con = abrir(tmp_path / "p.db")
+    fuente = FuenteFalsa("solotodo", [captura(sku="C1", tienda="abcdin")])
+    busqueda = {
+        "tienda": "solotodo",
+        "fuente": "solotodo",
+        "termino": None,
+        "categoria": 15,
+        "reglas": Reglas(precio_maximo=90000),
+    }
+    ejecutar_ciclo(con, {"solotodo": fuente}, [], [busqueda], NotificadorFalso(), CONFIG)
+
+    # (termino, limite, categoria): sin término, el límite de CONFIG, y la
+    # categoría que se pidió.
+    assert fuente.buscado == (None, 15, 15)

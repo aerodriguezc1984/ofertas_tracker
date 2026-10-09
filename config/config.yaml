@@ -1,7 +1,7 @@
 ejecucion:
   espera_entre_peticiones_seg: [2, 5]
   reintentos: 3
-  limite_por_busqueda: 15
+  limite_por_busqueda: 30
 historico:
   ventana_minimo_dias: 90
   dias_minimos_para_descuento: 7
@@ -41,5 +41,5 @@ comparacion:
   # Una petición por producto y por ciclo, al ritmo lento del transporte. Los
   # que llevan más tiempo sin comparar van primero, así que nadie se queda sin
   # turno aunque el tope sea bajo.
-  maximo_por_ciclo: 25
+  maximo_por_ciclo: 40
   cooldown_dias: 5

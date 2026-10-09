@@ -23,8 +23,131 @@ busquedas:
       precio_maximo: 700000
       permitir_precio_tarjeta: false
 
-  - termino: notebook
-    tienda: solotodo
+  # --- Rastreo amplio por categorías de SoloTodo ---
+  #
+  # Una petición por categoría trae hasta 100 productos CON su precio, así que
+  # vigilar 18 categorías cuesta 18 peticiones: menos que una sola búsqueda en
+  # Paris, donde cada ficha se paga aparte.
+  #
+  # La regla es `descuento_minimo_pct` y no `precio_maximo` a propósito. Un
+  # techo de precio no significa nada cuando mezclas refrigeradores con
+  # perfumes: lo que vale para uno es absurdo para el otro. El descuento sí es
+  # comparable entre categorías.
+  #
+  # CONSECUENCIA QUE HAY QUE SABER: el descuento se mide contra el mínimo
+  # histórico REAL, no contra el precio tachado de la tienda. Un producto
+  # descubierto hoy no tiene histórico, así que no puede alertar hasta pasados
+  # `dias_minimos_para_descuento` días (hoy 7). Es el precio de no creerse los
+  # «antes» inventados. Las primeras pasadas son silenciosas y eso es correcto.
+  #
+  # La palabra clave NO se usa aquí: `search=notebook` devuelve 8.167 entidades
+  # y las primeras son discos, ratones e impresoras. La categoría sí filtra, y
+  # una categoría inexistente devuelve 400, así que una errata falla ruidosa.
+
+  - tienda: solotodo          # Notebooks
     fuente: solotodo
+    categoria: 1
     reglas:
-      precio_maximo: 700000
+      descuento_minimo_pct: 20
+
+  - tienda: solotodo          # Celulares
+    fuente: solotodo
+    categoria: 6
+    reglas:
+      descuento_minimo_pct: 20
+
+  - tienda: solotodo          # Televisores
+    fuente: solotodo
+    categoria: 11
+    reglas:
+      descuento_minimo_pct: 20
+
+  - tienda: solotodo          # Monitores
+    fuente: solotodo
+    categoria: 4
+    reglas:
+      descuento_minimo_pct: 20
+
+  - tienda: solotodo          # Tablets
+    fuente: solotodo
+    categoria: 14
+    reglas:
+      descuento_minimo_pct: 20
+
+  - tienda: solotodo          # Wearables
+    fuente: solotodo
+    categoria: 48
+    reglas:
+      descuento_minimo_pct: 20
+
+  - tienda: solotodo          # Audifonos y Headsets
+    fuente: solotodo
+    categoria: 50
+    reglas:
+      descuento_minimo_pct: 20
+
+  - tienda: solotodo          # Consolas
+    fuente: solotodo
+    categoria: 33
+    reglas:
+      descuento_minimo_pct: 20
+
+  - tienda: solotodo          # Impresoras
+    fuente: solotodo
+    categoria: 16
+    reglas:
+      descuento_minimo_pct: 20
+
+  - tienda: solotodo          # Refrigeradores
+    fuente: solotodo
+    categoria: 15
+    reglas:
+      descuento_minimo_pct: 20
+
+  - tienda: solotodo          # Lavadoras y Secadoras
+    fuente: solotodo
+    categoria: 19
+    reglas:
+      descuento_minimo_pct: 20
+
+  - tienda: solotodo          # Hornos y Microondas
+    fuente: solotodo
+    categoria: 17
+    reglas:
+      descuento_minimo_pct: 20
+
+  - tienda: solotodo          # Aire Acondicionado Split
+    fuente: solotodo
+    categoria: 43
+    reglas:
+      descuento_minimo_pct: 20
+
+  - tienda: solotodo          # Aspiradoras
+    fuente: solotodo
+    categoria: 18
+    reglas:
+      descuento_minimo_pct: 20
+
+  - tienda: solotodo          # Air fryers
+    fuente: solotodo
+    categoria: 256
+    reglas:
+      descuento_minimo_pct: 20
+
+  - tienda: solotodo          # Cafeteras
+    fuente: solotodo
+    categoria: 219
+    reglas:
+      descuento_minimo_pct: 20
+
+  - tienda: solotodo          # Licuadoras
+    fuente: solotodo
+    categoria: 285
+    reglas:
+      descuento_minimo_pct: 20
+
+  - tienda: solotodo          # Perfumes, Colonias y Fragancias
+    fuente: solotodo
+    categoria: 780
+    reglas:
+      descuento_minimo_pct: 20

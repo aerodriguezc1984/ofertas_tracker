@@ -130,17 +130,39 @@ class SoloTodo:
             self._tiendas = tiendas
         return self._tiendas
 
-    def buscar(self, termino: str, limite: int) -> list[Captura]:
+    def buscar(
+        self, termino: str | None, limite: int, categoria: int | None = None
+    ) -> list[Captura]:
+        """Por palabra clave, por categoría, o por las dos.
+
+        La palabra clave de este agregador NO acota: `search=notebook` devuelve
+        8.167 entidades, y las primeras son discos, ratones e impresoras —casa
+        por cosas que no son el nombre del producto—. La categoría sí: filtra de
+        verdad, y una categoría inexistente devuelve 400 en vez de ignorarse, o
+        sea que una errata en la configuración falla ruidosamente.
+        """
         tiendas = self._catalogo()
         if tiendas is None:
             return []
 
-        consulta = urlencode({"search": termino, "is_active": "true"})
+        parametros: dict[str, object] = {}
+        if termino:
+            parametros["search"] = termino
+        if categoria is not None:
+            parametros["categories"] = categoria
+        if not parametros:
+            registro.warning("solotodo: una búsqueda sin término ni categoría")
+            return []
+        parametros["is_active"] = "true"
+        consulta = urlencode(parametros)
         url = f"{self.BASE}/entities/?{consulta}"
         try:
             datos = json.loads(self._traer(url))
         except TiendaBloqueada as error:
-            registro.warning("solotodo: búsqueda bloqueada para %r (%s)", termino, error)
+            registro.warning(
+                "solotodo: búsqueda bloqueada (término %r, categoría %s): %s",
+                termino, categoria, error,
+            )
             return []
 
         capturas: list[Captura] = []

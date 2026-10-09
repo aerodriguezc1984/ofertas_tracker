@@ -95,16 +95,26 @@ def cargar_lista_deseos(ruta: Path | str) -> tuple[list[dict], list[dict]]:
 
     busquedas = []
     for entrada in datos.get("busquedas") or []:
-        if not _entrada_valida(entrada, ("tienda", "termino"), "busquedas"):
+        if not _entrada_valida(entrada, ("tienda",), "busquedas"):
             continue
-        reglas = _reglas_de(entrada, entrada["termino"])
+        termino = entrada.get("termino")
+        categoria = entrada.get("categoria")
+        if not termino and categoria is None:
+            # Una de las dos hace falta: sin ninguna no hay nada que buscar, y
+            # la entrada se saltaría en silencio dentro de la fuente.
+            registro.warning(
+                "se salta una búsqueda sin termino ni categoria: %r", entrada
+            )
+            continue
+        reglas = _reglas_de(entrada, termino or f"categoría {categoria}")
         if reglas is None:
             continue
         busquedas.append(
             {
                 "tienda": entrada["tienda"],
                 "fuente": entrada.get("fuente") or entrada["tienda"],
-                "termino": entrada["termino"],
+                "termino": termino,
+                "categoria": categoria,
                 "reglas": reglas,
             }
         )
@@ -252,14 +262,17 @@ def ejecutar_ciclo(con, fuentes, vigilados, busquedas, notificador, config) -> i
             )
             continue
         try:
-            capturas = fuente.buscar(busqueda["termino"], limite)
+            capturas = fuente.buscar(
+                busqueda["termino"], limite, busqueda.get("categoria")
+            )
         except Exception as error:  # noqa: BLE001
             # Con traza, por el mismo motivo que en el bucle de vigilados: el
             # sujeto es el término y la tienda de la búsqueda, no
             # `fuente.nombre`.
             registro.warning(
-                "no se pudo buscar %r (tienda %s) con la fuente %s: %s",
-                busqueda["termino"], busqueda["tienda"], fuente.nombre, error,
+                "no se pudo buscar %r/categoría %s (tienda %s) con la fuente %s: %s",
+                busqueda["termino"], busqueda.get("categoria"),
+                busqueda["tienda"], fuente.nombre, error,
                 exc_info=True,
             )
             continue

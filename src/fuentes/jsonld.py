@@ -79,7 +79,19 @@ class FuenteJsonLd:
             capturas.append(captura)
         return capturas
 
-    def buscar(self, termino: str, limite: int) -> list[Captura]:
+    def buscar(
+        self, termino: str | None, limite: int, categoria: int | None = None
+    ) -> list[Captura]:
+        if categoria is not None:
+            # Una tienda no publica un catálogo por categorías que podamos
+            # pedir; devolver lo de la palabra clave como si lo fuera dejaría
+            # una búsqueda mal configurada funcionando a medias para siempre.
+            registro.warning(
+                "%s: no sabe buscar por categoría (se pidió la %s)",
+                self.nombre, categoria,
+            )
+            return []
+
         url = self.url_de_busqueda(termino)
         try:
             html = self._traer(url)

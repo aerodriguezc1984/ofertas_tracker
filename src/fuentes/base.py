@@ -60,4 +60,9 @@ class Fuente(Protocol):
 
     def obtener(self, referencias: list[Referencia]) -> list[Captura]: ...
 
-    def buscar(self, termino: str, limite: int) -> list[Captura]: ...
+    # `categoria` solo lo entienden las fuentes que tienen catálogo propio.
+    # Las demás deben rechazarlo, no ignorarlo: configurar una categoría y
+    # recibir los resultados de la palabra clave sería mentir en silencio.
+    def buscar(
+        self, termino: str | None, limite: int, categoria: int | None = None
+    ) -> list[Captura]: ...

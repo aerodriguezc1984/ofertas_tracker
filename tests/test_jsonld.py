@@ -136,3 +136,20 @@ def test_una_referencia_sin_sku_no_exige_coincidencia():
     fuente = FuenteDePrueba(lambda url: "ficha", [])
     capturas = fuente.obtener([Referencia("prueba", "https://t.cl/a.html")])
     assert len(capturas) == 1
+
+
+def test_una_fuente_sin_categorias_rechaza_que_le_pidan_una():
+    """Paris y Falabella no tienen categorías: no pueden fingir que sí.
+
+    Ignorar el parámetro y devolver los resultados de la palabra clave sería
+    peor que no devolver nada: habrías configurado una categoría y recibirías
+    otra cosa, sin enterarte.
+    """
+    pedidas = []
+
+    def traer(url):
+        pedidas.append(url)
+        return "<html></html>"
+
+    assert FuenteDePrueba(traer, []).buscar("notebook", limite=5, categoria=15) == []
+    assert pedidas == []
