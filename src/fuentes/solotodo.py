@@ -23,6 +23,18 @@ registro = logging.getLogger(__name__)
 
 _NO_ALFANUM = re.compile(r"[^a-z0-9]+")
 
+# SoloTodo cubre DIEZ países, no solo Chile. La moneda 1 es el peso chileno;
+# comprobado en `/currencies/`: 1=CLP, 4=USD, 8=GTQ, 10=NIO. Un refrigerador de
+# Guatemala a 4.699 quetzales guardado como 4.699 pesos no es un dato con un
+# error: es una ganga inventada, y en la comparación entre tiendas gritaría
+# «más barato en otra parte».
+MONEDA_CHILENA = 1
+
+# El país se filtra ADEMÁS en la consulta, por otro motivo: que las entidades
+# extranjeras no se coman los huecos del límite. La corrección la garantiza la
+# guarda de `captura_de_entidad`, no este filtro —el filtro es eficiencia—.
+PAIS_CHILE = 1
+
 
 def identificador_de_tienda(nombre: str) -> str:
     """`AbcDin` -> `abcdin`; `PC Factory` -> `pc-factory`.
@@ -50,6 +62,11 @@ def captura_de_entidad(
     de tienda en crudo: si no, la comparación nunca coincide y una tienda que
     ya cubrimos en directo deja de excluirse sin que nada avise.
     """
+    if entidad.get("currency") != MONEDA_CHILENA:
+        # Silencioso a propósito: con el filtro por país puesto esto no debería
+        # pasar nunca, y si la API cambia de forma serían cientos de líneas.
+        return None
+
     registro_activo = entidad.get("active_registry")
     if not registro_activo:
         return None   # la tienda ya no lo ofrece
@@ -150,6 +167,7 @@ class SoloTodo:
             parametros["search"] = termino
         if categoria is not None:
             parametros["categories"] = categoria
+            parametros["countries"] = PAIS_CHILE
         if not parametros:
             registro.warning("solotodo: una búsqueda sin término ni categoría")
             return []

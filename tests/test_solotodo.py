@@ -313,16 +313,24 @@ def test_un_catalogo_vacio_no_se_cachea_y_se_reintenta():
     assert len(intentos) == 2                                   # se pidió dos veces
 
 
-URL_POR_CATEGORIA = "https://api.solotodo.com/entities/?categories=15&is_active=true"
-URL_MIXTA = "https://api.solotodo.com/entities/?search=frio&categories=15&is_active=true"
+URL_POR_CATEGORIA = (
+    "https://api.solotodo.com/entities/?categories=15&countries=1&is_active=true"
+)
+URL_MIXTA = (
+    "https://api.solotodo.com/entities/"
+    "?search=frio&categories=15&countries=1&is_active=true"
+)
 
 
 def test_la_busqueda_por_categoria_pide_el_filtro_de_categoria():
     """La palabra clave de este agregador no acota y la categoría sí.
 
-    El ayudante casa por URL exacta: si `categories` no llegara a la
-    consulta, el transporte lanzaría y esto devolvería []. La prueba fija
-    así la forma de la URL sin una aserción aparte.
+    El ayudante casa por URL exacta, así que esta prueba fija la consulta
+    ENTERA sin una aserción aparte: la categoría y el `countries=1`. Si
+    faltara cualquiera de los dos, el transporte lanzaría y esto daría [].
+
+    El país importa porque SoloTodo cubre diez: sin filtrarlo, una de cada
+    diez entidades llega en otra moneda y además se come un hueco del límite.
     """
     traer, _ = transporte_de({
         "https://api.solotodo.com/stores/": CATALOGO,
@@ -350,3 +358,27 @@ def test_una_busqueda_sin_termino_ni_categoria_no_pide_nada():
     traer, pedidas = transporte_de({"https://api.solotodo.com/stores/": CATALOGO})
     assert SoloTodo(traer).buscar(None, limite=5) == []
     assert not [u for u in pedidas if "/entities/" in u]
+
+
+def test_una_entidad_en_otra_moneda_se_descarta():
+    """SoloTodo cubre 10 países, no solo Chile.
+
+    Un refrigerador de Guatemala a 4.699 quetzales guardado como 4.699
+    pesos no es un dato con un error: es una ganga inventada, y en la
+    comparación entre tiendas gritaría «más barato en otra parte».
+    El dinero de este proyecto es peso chileno; lo que no lo sea, fuera.
+    """
+    import copy
+
+    ajena = copy.deepcopy(ENTIDADES[0])
+    ajena["currency"] = 8          # GTQ, quetzal guatemalteco
+    assert captura_de_entidad(ajena, TIENDAS, set()) is None
+
+
+def test_una_entidad_sin_moneda_declarada_se_descarta():
+    """Sin saber en qué moneda está, no se puede afirmar que sean pesos."""
+    import copy
+
+    muda = copy.deepcopy(ENTIDADES[0])
+    del muda["currency"]
+    assert captura_de_entidad(muda, TIENDAS, set()) is None

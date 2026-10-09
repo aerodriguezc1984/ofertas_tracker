@@ -6,12 +6,16 @@
     "external_url": "https://www.abc.cl/notebook-AD-100",
     "ean": "7801234567890",
     "store": 30,
-    "product": {"id": 43835, "name": "Notebook normalizado"},
+    "product": {
+      "id": 43835,
+      "name": "Notebook normalizado"
+    },
     "active_registry": {
       "is_available": true,
       "normal_price": "587990.00",
       "offer_price": "573990.00"
-    }
+    },
+    "currency": 1
   },
   {
     "id": 1379497,
@@ -20,8 +24,12 @@
     "external_url": "https://www.abc.cl/notebook-AD-101",
     "ean": null,
     "store": 30,
-    "product": {"id": 43836, "name": "Otro"},
-    "active_registry": null
+    "product": {
+      "id": 43836,
+      "name": "Otro"
+    },
+    "active_registry": null,
+    "currency": 1
   },
   {
     "id": 1379498,
@@ -30,12 +38,16 @@
     "external_url": "https://www.falabella.com/falabella-cl/product/4839263/x/4839263",
     "ean": null,
     "store": 9,
-    "product": {"id": 51001, "name": "Cartucho"},
+    "product": {
+      "id": 51001,
+      "name": "Cartucho"
+    },
     "active_registry": {
       "is_available": true,
       "normal_price": "13990.00",
       "offer_price": "13990.00"
-    }
+    },
+    "currency": 1
   },
   {
     "id": 1379499,
@@ -49,6 +61,7 @@
       "is_available": false,
       "normal_price": "1000.00",
       "offer_price": "900.00"
-    }
+    },
+    "currency": 1
   }
 ]
