@@ -6,7 +6,7 @@ historico:
   ventana_minimo_dias: 90
   dias_minimos_para_descuento: 7
 alertas:
-  canal: archivo          # archivo | telegram
+  canal: telegram         # archivo | telegram
   cooldown_dias: 5
   ruta_archivo: logs/alertas.jsonl
 solotodo:

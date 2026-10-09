@@ -19,8 +19,8 @@ por eso aquí solo se conserva el NOMBRE del tipo de la excepción, igual que en
 `avisos/telegram.py`.
 """
 
-import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -38,6 +38,12 @@ from nucleo.comparacion import (  # noqa: E402
 )
 
 ENV = RAIZ / ".env"
+
+# Un token de BotFather son <id del bot>:<35 caracteres>. Comprobar la forma
+# antes de preguntarle a Telegram convierte el error más común —un espacio que
+# se coló al copiar— en un mensaje que dice qué pasa, en vez de un 404 que
+# parece otra cosa.
+FORMA_DEL_TOKEN = re.compile(r"\d{6,12}:[A-Za-z0-9_-]{30,45}")
 
 PRODUCTO_DE_PRUEBA = ProductoVigilado(
     id=0,
@@ -58,8 +64,14 @@ VEREDICTO_DE_PRUEBA = VeredictoMejorPrecio(
 )
 
 
-def _pedir_chat_id(token: str) -> str | None:
-    """El chat de la última conversación con el bot, o None si no hay ninguna."""
+def _pedir_chat_id(token: str) -> tuple[str | None, str]:
+    """Devuelve (chat_id, motivo). El motivo distingue POR QUÉ no lo hay.
+
+    Que no haya chat_id tiene tres causas muy distintas —la red, el token, o que
+    todavía no le hayas escrito al bot— y cada una se arregla de otra forma.
+    Devolverlas todas como `None` obliga a quien llama a adivinar, y adivinar en
+    un mensaje de error es cómo se manda a alguien a mirar al sitio equivocado.
+    """
     tipo_de_fallo = None
     try:
         respuesta = requests.get(
@@ -71,21 +83,18 @@ def _pedir_chat_id(token: str) -> str | None:
     if tipo_de_fallo is not None:
         # Fuera del `except` para que la excepción nueva no encadene la vieja,
         # cuyo texto lleva la URL —y la URL lleva el token—.
-        print(f"FALLA: no se pudo hablar con Telegram ({tipo_de_fallo}).")
-        return None
+        return None, f"red:{tipo_de_fallo}"
 
     if not datos.get("ok"):
         # `description` viene de Telegram y no incluye la URL.
-        print(f"FALLA: Telegram rechazó la consulta: {datos.get('description')!r}")
-        print("Lo más común: el token está mal copiado.")
-        return None
+        return None, f"rechazado:{datos.get('description')}"
 
     for actualizacion in reversed(datos.get("result") or []):
         mensaje = actualizacion.get("message") or actualizacion.get("channel_post") or {}
         chat = mensaje.get("chat") or {}
         if chat.get("id") is not None:
-            return str(chat["id"])
-    return None
+            return str(chat["id"]), "ok"
+    return None, "sin_conversacion"
 
 
 def _guardar_chat_id(chat_id: str) -> None:
@@ -121,13 +130,35 @@ def main() -> int:
         print("Después vuelve a ejecutar esta sonda.")
         return 1
 
+    if not FORMA_DEL_TOKEN.fullmatch(token):
+        print("EL TOKEN NO TIENE LA FORMA DE UN TOKEN DE TELEGRAM.")
+        print()
+        print("  Se esperaba <id del bot>:<35 caracteres>, por ejemplo")
+        print("  8123456789:AAF... — en total 46 caracteres, sin espacios.")
+        print(f"  Lo que hay en el .env tiene {len(token)} caracteres.")
+        print()
+        print("Lo más común es que se colara un espacio o un salto de línea al")
+        print("copiarlo desde el mensaje de BotFather, o que falte un trozo.")
+        return 1
+
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
     if not chat_id:
         print("Falta el chat_id. Se lo pregunto a Telegram...")
-        chat_id = _pedir_chat_id(token)
-        if chat_id is None:
+        chat_id, motivo = _pedir_chat_id(token)
+        if motivo.startswith("red:"):
+            print(f"FALLA: no se pudo hablar con Telegram ({motivo.split(':', 1)[1]}).")
+            print("Es un problema de conexión, no del token ni del bot.")
+            return 1
+        if motivo.startswith("rechazado:"):
+            print(f"FALLA: Telegram rechazó el token: {motivo.split(':', 1)[1]!r}")
             print()
-            print("No hay ninguna conversación con el bot todavía.")
+            print("El token tiene la forma correcta pero no corresponde a ningún")
+            print("bot. Vuelve a copiarlo entero desde BotFather: si el bot se")
+            print("borró o regeneraste el token, el viejo deja de valer.")
+            return 1
+        if motivo == "sin_conversacion":
+            print()
+            print("El token es válido, pero no hay ninguna conversación con el bot.")
             print("Búscalo en Telegram por su usuario, mándale un «hola», y repite.")
             return 1
         _guardar_chat_id(chat_id)
