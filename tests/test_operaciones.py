@@ -3,10 +3,13 @@ from dataclasses import replace
 from almacen.conexion import abrir
 from almacen.operaciones import (
     alta_o_actualiza_producto,
-    productos_a_comparar,
     guardar_identidad,
     marcar_comparado,
+    productos_a_comparar,
+    registrar_alerta,
     registrar_si_cambio,
+    ultima_alerta,
+    ultima_alerta_de_articulo,
 )
 from fuentes.base import Captura
 
@@ -241,3 +244,42 @@ def test_con_dos_precios_del_mismo_segundo_gana_el_ultimo(tmp_path):
 
     a_comparar = productos_a_comparar(con, "2024-01-01 00:00:00", 10)
     assert [p.precio_internet for p in a_comparar] == [333333]
+
+
+def test_la_ultima_alerta_del_articulo_mira_todas_sus_filas(tmp_path):
+    """El mismo iPhone vigilado en tres tiendas son tres filas y UN artículo.
+
+    Si el cooldown se lleva por fila, las tres avisan del mismo hallazgo.
+    """
+    con = abrir(tmp_path / "p.db")
+    uno = _producto_con_precio(con, "ripley", "R1", 887990, "https://ejemplo/r")
+    dos = _producto_con_precio(con, "paris", "P1", 621990, "https://ejemplo/p")
+    guardar_identidad(con, uno, 269594)
+    guardar_identidad(con, dos, 269594)
+
+    registrar_alerta(con, uno, "mejor_precio", 349990)
+
+    # La fila `dos` no ha avisado nunca, pero su ARTÍCULO sí.
+    assert ultima_alerta(con, dos, "mejor_precio") is None
+    fila = ultima_alerta_de_articulo(con, 269594, "mejor_precio")
+    assert fila is not None
+    assert fila["precio_notificado"] == 349990
+
+
+def test_un_articulo_distinto_no_hereda_la_alerta(tmp_path):
+    """Agrupar no puede silenciar lo que no es el mismo artículo."""
+    con = abrir(tmp_path / "p.db")
+    uno = _producto_con_precio(con, "ripley", "R2", 887990, "https://ejemplo/r2")
+    guardar_identidad(con, uno, 269594)
+    registrar_alerta(con, uno, "mejor_precio", 349990)
+
+    assert ultima_alerta_de_articulo(con, 999999, "mejor_precio") is None
+
+
+def test_la_alerta_del_articulo_distingue_la_regla(tmp_path):
+    con = abrir(tmp_path / "p.db")
+    uno = _producto_con_precio(con, "ripley", "R3", 887990, "https://ejemplo/r3")
+    guardar_identidad(con, uno, 269594)
+    registrar_alerta(con, uno, "precio_maximo", 349990)
+
+    assert ultima_alerta_de_articulo(con, 269594, "mejor_precio") is None

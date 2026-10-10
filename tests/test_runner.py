@@ -796,3 +796,45 @@ def test_el_ciclo_le_pasa_la_categoria_a_la_fuente(tmp_path):
     # (termino, limite, categoria): sin término, el límite de CONFIG, y la
     # categoría que se pidió.
     assert fuente.buscado == (None, 15, 15)
+
+
+def _producto_con_identidad(con, tienda, sku, precio, identidad):
+    unica = captura(sku=sku, tienda=tienda, precio=precio)
+    producto_id = alta_o_actualiza_producto(con, unica)
+    registrar_si_cambio(con, producto_id, unica)
+    guardar_identidad(con, producto_id, identidad)
+    return producto_id
+
+
+def test_el_mismo_articulo_en_dos_tiendas_avisa_una_sola_vez(tmp_path):
+    """Tres filas del mismo iPhone encontraban la MISMA oferta y avisaban tres
+    veces. El hallazgo es uno: el aviso también."""
+    con = abrir(tmp_path / "p.db")
+    _producto_con_identidad(con, "ripley", "R1", 887990, 269594)
+    _producto_con_identidad(con, "paris", "P1", 621990, 269594)
+    avisos = NotificadorFalso()
+    fuente = SoloTodoFalso(
+        ofertas=[OfertaAjena("entel", 349990, "https://entel.cl/x", True)]
+    )
+
+    enviadas = ejecutar_comparacion(
+        con, fuente, avisos, CONFIG_CON_COMPARACION, "2024-01-01 00:00:00"
+    )
+
+    assert enviadas == 1
+
+
+def test_dos_articulos_distintos_avisan_los_dos(tmp_path):
+    """Agrupar no puede silenciar lo que no es el mismo artículo."""
+    con = abrir(tmp_path / "p.db")
+    _producto_con_identidad(con, "ripley", "R2", 887990, 269594)
+    _producto_con_identidad(con, "paris", "P2", 621990, 111111)
+    fuente = SoloTodoFalso(
+        ofertas=[OfertaAjena("entel", 349990, "https://entel.cl/x", True)]
+    )
+
+    enviadas = ejecutar_comparacion(
+        con, fuente, NotificadorFalso(), CONFIG_CON_COMPARACION, "2024-01-01 00:00:00"
+    )
+
+    assert enviadas == 2

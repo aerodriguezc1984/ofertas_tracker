@@ -152,6 +152,34 @@ def ultima_alerta(con: sqlite3.Connection, producto_id: int, regla: str):
     ).fetchone()
 
 
+def ultima_alerta_de_articulo(
+    con: sqlite3.Connection, producto_solotodo: int, regla: str
+):
+    """La última alerta de CUALQUIER fila del mismo artículo.
+
+    El mismo iPhone vigilado en tres tiendas son tres filas de `productos` y un
+    solo artículo. Si el descanso entre avisos se lleva por fila, las tres
+    encuentran la misma oferta ajena y te avisan tres veces del mismo hallazgo.
+
+    Se consulta por `producto_solotodo` y no por `producto_id`, así que el
+    descanso es del artículo: avisa la primera fila a la que le toque turno y
+    las demás callan. Vale igual dentro de un ciclo y entre ciclos, porque cada
+    escritura se confirma al instante.
+    """
+    return con.execute(
+        """
+        SELECT a.precio_notificado,
+               (julianday('now') - julianday(a.enviado_el)) AS dias_desde
+          FROM registro_alertas a
+          JOIN productos p ON p.id = a.producto_id
+         WHERE p.producto_solotodo = ? AND a.regla = ?
+         ORDER BY a.enviado_el DESC, a.id DESC
+         LIMIT 1
+        """,
+        (producto_solotodo, regla),
+    ).fetchone()
+
+
 def registrar_alerta(
     con: sqlite3.Connection, producto_id: int, regla: str, precio: int
 ) -> None:

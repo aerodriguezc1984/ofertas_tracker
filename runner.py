@@ -17,6 +17,7 @@ from almacen.operaciones import (                  # noqa: E402
     alta_o_actualiza_producto,
     dias_de_historico,
     guardar_identidad,
+    ultima_alerta_de_articulo,
     marcar_comparado,
     minimo_historico,
     productos_a_comparar,
@@ -322,7 +323,9 @@ def ejecutar_comparacion(con, fuente, notificador, config, desde: str) -> int:
             if veredicto is None:
                 continue
 
-            anterior = ultima_alerta(con, producto.id, "mejor_precio")
+            # Por ARTÍCULO, no por fila: el mismo modelo vigilado en varias
+            # tiendas encuentra la misma oferta ajena, y el hallazgo es uno.
+            anterior = ultima_alerta_de_articulo(con, identificador, "mejor_precio")
             if not debe_notificar(anterior, veredicto.oferta.precio, cooldown):
                 continue
 
