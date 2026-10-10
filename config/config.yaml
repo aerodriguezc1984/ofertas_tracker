@@ -36,8 +36,12 @@ comparacion:
   activa: true
   # Se exigen LOS DOS umbrales, no uno: sin el absoluto un mouse de 8.000 pesos
   # avisa por 800, y sin el relativo un notebook de 900.000 avisa por 10.000.
-  caida_minima_pct: 10
-  ahorro_minimo_pesos: 10000
+  # Subidos el 2026-10-09 midiendo contra los 26 avisos ya enviados: con 10 %
+  # y 10.000 pasaban los 26, incluidos un SSD por 12.406 pesos y un set de
+  # teclado por 10.335. Con estos sobreviven 17, y no se pierde nada que mueva
+  # una decisión de compra.
+  caida_minima_pct: 20
+  ahorro_minimo_pesos: 30000
   # Una petición por producto y por ciclo, al ritmo lento del transporte. Los
   # que llevan más tiempo sin comparar van primero, así que nadie se queda sin
   # turno aunque el tope sea bajo.
