@@ -1,5 +1,8 @@
 """Lo que el portal enseña sale de aquí, y solo lee."""
 
+import json
+from pathlib import Path
+
 from almacen.conexion import abrir
 from almacen.operaciones import alta_o_actualiza_producto, registrar_si_cambio
 from fuentes.base import Captura
@@ -130,3 +133,36 @@ def test_el_desempate_por_id_deshace_el_empate_del_mismo_segundo(tmp_path):
     oferta = datos_del_portal(con)["ofertas"][0]
     assert oferta["precio"] == 180000          # el último insertado, no el primero
     assert oferta["precio_anterior"] == 120000
+
+
+def test_generar_escribe_los_dos_archivos(tmp_path):
+    from herramientas.generar_portal import generar
+
+    con = abrir(tmp_path / "p.db")
+    _con_precios(con, [887990, 349990], sku="G1")
+
+    html, datos = generar(con, tmp_path / "salida")
+
+    assert html.name == "index.html"
+    assert datos.name == "datos.json"
+    assert html.exists() and datos.exists()
+
+
+def test_el_json_generado_es_valido_y_trae_las_ofertas(tmp_path):
+    from herramientas.generar_portal import generar
+
+    con = abrir(tmp_path / "p.db")
+    _con_precios(con, [887990, 349990], sku="G2", titulo='Monitor 15,6" & más')
+
+    _, datos = generar(con, tmp_path / "salida")
+    leido = json.loads(datos.read_text(encoding="utf-8"))
+
+    assert leido["ofertas"][0]["titulo"] == 'Monitor 15,6" & más'
+    assert leido["ofertas"][0]["descuento_pct"] == 61
+
+
+def test_la_pagina_no_pinta_datos_con_innerhtml():
+    """Los títulos vienen de las tiendas: con `innerHTML` uno con `<` rompe la
+    página. La plantilla usa `textContent` y esta prueba lo fija."""
+    plantilla = Path(__file__).parent.parent / "src" / "portal" / "plantilla.html"
+    assert "innerHTML" not in plantilla.read_text(encoding="utf-8")

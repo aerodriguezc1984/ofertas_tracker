@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ofertas — Rastreador de precios</title>
+<style>
+  :root {
+    --bg: #f3f4f8;
+    --superficie: #ffffff;
+    --texto: #1b1e24;
+    --texto-tenue: #5b6270;
+    --borde: #e1e4ea;
+    --acento: #c6392b;
+    --acento-suave: #fbe3e0;
+    --enlace: #1a5fb4;
+    --radio: 10px;
+    --radio-sm: 6px;
+    --sombra: 0 1px 3px rgba(0, 0, 0, .08), 0 1px 2px rgba(0, 0, 0, .06);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --superficie: #1e2127;
+      --texto: #e7e9ee;
+      --texto-tenue: #9aa1ad;
+      --borde: #2b2f37;
+      --acento: #ff6b5e;
+      --acento-suave: #3a211f;
+      --enlace: #7db4ff;
+      --sombra: 0 1px 4px rgba(0, 0, 0, .5);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--texto);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.4;
+  }
+
+  a { color: var(--enlace); }
+
+  header {
+    padding: 1.25rem 1rem .5rem;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  header h1 {
+    margin: 0 0 .15rem;
+    font-size: clamp(1.3rem, 1rem + 1.5vw, 1.8rem);
+  }
+
+  #sincronizacion {
+    margin: 0;
+    color: var(--texto-tenue);
+    font-size: .85rem;
+  }
+
+  .panel {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 1rem;
+  }
+
+  .controles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .6rem;
+    align-items: center;
+    background: var(--superficie);
+    border: 1px solid var(--borde);
+    border-radius: var(--radio-sm);
+    padding: .75rem;
+    margin-bottom: .75rem;
+  }
+
+  .controles input[type="search"],
+  .controles input[type="number"],
+  .controles select {
+    border: 1px solid var(--borde);
+    border-radius: var(--radio-sm);
+    background: var(--bg);
+    color: var(--texto);
+    padding: .45rem .55rem;
+    font-size: .9rem;
+  }
+
+  #buscar { flex: 1 1 220px; min-width: 0; }
+
+  .precio-rango { display: flex; gap: .4rem; flex: 1 1 200px; }
+  .precio-rango input { width: 100%; min-width: 0; }
+
+  fieldset.tiendas-caja {
+    border: 1px solid var(--borde);
+    border-radius: var(--radio-sm);
+    background: var(--superficie);
+    padding: .5rem .75rem .75rem;
+    margin: 0 0 .75rem;
+  }
+
+  fieldset.tiendas-caja legend {
+    padding: 0 .3rem;
+    color: var(--texto-tenue);
+    font-size: .8rem;
+  }
+
+  #tiendas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem .9rem;
+  }
+
+  .etiqueta-tienda {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    font-size: .85rem;
+    cursor: pointer;
+  }
+
+  #cuantos {
+    color: var(--texto-tenue);
+    font-size: .85rem;
+    margin: 0 0 .75rem;
+  }
+
+  .resultados {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: .9rem;
+    padding-bottom: 2rem;
+  }
+
+  @media (min-width: 620px) {
+    .resultados {
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    }
+  }
+
+  .tarjeta {
+    background: var(--superficie);
+    border: 1px solid var(--borde);
+    border-radius: var(--radio);
+    box-shadow: var(--sombra);
+    padding: .9rem;
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+    position: relative;
+  }
+
+  .tarjeta.agotado {
+    opacity: .55;
+    filter: grayscale(.4);
+  }
+
+  .tarjeta h2 {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.3;
+    padding-right: 3.5rem;
+  }
+
+  .tarjeta h2 a {
+    text-decoration: none;
+  }
+
+  .tarjeta h2 a:hover {
+    text-decoration: underline;
+  }
+
+  .insignia {
+    position: absolute;
+    top: .8rem;
+    right: .8rem;
+    background: var(--acento);
+    color: #fff;
+    font-size: .75rem;
+    font-weight: 700;
+    padding: .15rem .45rem;
+    border-radius: 999px;
+  }
+
+  .antes {
+    margin: 0;
+    font-size: .8rem;
+    color: var(--texto-tenue);
+    background: var(--acento-suave);
+    border-radius: var(--radio-sm);
+    padding: .3rem .5rem;
+  }
+
+  .tarjeta ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .15rem;
+    font-size: .9rem;
+  }
+
+  .tarjeta ul li:first-child {
+    font-weight: 700;
+    font-size: 1.1rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Ofertas — Rastreador de precios</h1>
+  <p id="sincronizacion">Cargando…</p>
+</header>
+
+<div class="panel">
+  <div class="controles">
+    <input type="search" id="buscar" placeholder="Buscar por título…" aria-label="Buscar por título">
+
+    <select id="descuento" aria-label="Descuento mínimo">
+      <option value="0">Cualquier descuento</option>
+      <option value="10">10 % o más</option>
+      <option value="30">30 % o más</option>
+      <option value="50">50 % o más</option>
+    </select>
+
+    <div class="precio-rango">
+      <input type="number" id="precio-min" min="0" placeholder="Precio mínimo" aria-label="Precio mínimo">
+      <input type="number" id="precio-max" min="0" placeholder="Precio máximo" aria-label="Precio máximo">
+    </div>
+
+    <select id="orden" aria-label="Ordenar por">
+      <option value="descuento">Mayor descuento</option>
+      <option value="reciente">Bajada más reciente</option>
+      <option value="precio">Menor precio</option>
+    </select>
+  </div>
+
+  <fieldset class="tiendas-caja">
+    <legend>Tiendas</legend>
+    <div id="tiendas"></div>
+  </fieldset>
+
+  <p id="cuantos" aria-live="polite"></p>
+
+  <div id="resultados" class="resultados"></div>
+</div>
+
+<script>
+  // El nombre del archivo lo inyecta el generador, para que la página no dependa
+  // de dónde se sirva.
+  const ORIGEN = "__DATOS__";
+  const MEDIA_HORA = 30 * 60 * 1000;
+
+  let ofertas = [];
+
+  function pesos(n) {
+    // 887990 -> "$887.990", como se escribe en Chile.
+    return "$" + n.toLocaleString("es-CL");
+  }
+
+  function dia(marca) {
+    // "2026-10-09 18:20" -> "09/10"
+    if (!marca) return "";
+    const [a, m, d] = marca.slice(0, 10).split("-");
+    return `${d}/${m}`;
+  }
+
+  async function cargar() {
+    const r = await fetch(ORIGEN + "?t=" + Date.now()); // sin caché del navegador
+    const datos = await r.json();
+    ofertas = datos.ofertas;
+    document.getElementById("sincronizacion").textContent =
+      `${datos.productos} productos de ${datos.tiendas} tiendas · datos del ${datos.generado_el} UTC`;
+    poblarTiendas();
+    pintar();
+  }
+
+  function poblarTiendas() {
+    // Una casilla por tienda distinta. Se conserva lo que ya estaba marcado,
+    // para que el refresco automático no borre el filtro que eligió la
+    // persona que mira la página.
+    const contenedor = document.getElementById("tiendas");
+    const marcadas = new Set(
+      [...contenedor.querySelectorAll(".tienda:checked")].map((c) => c.value)
+    );
+    contenedor.replaceChildren();
+
+    const distintas = [...new Set(ofertas.map((o) => o.tienda))].sort();
+    for (const nombre of distintas) {
+      const etiqueta = document.createElement("label");
+      etiqueta.className = "etiqueta-tienda";
+
+      const casilla = document.createElement("input");
+      casilla.type = "checkbox";
+      casilla.className = "tienda";
+      casilla.value = nombre;
+      casilla.checked = marcadas.has(nombre);
+      casilla.addEventListener("change", pintar);
+      etiqueta.appendChild(casilla);
+
+      const texto = document.createElement("span");
+      texto.textContent = nombre;
+      etiqueta.appendChild(texto);
+
+      contenedor.appendChild(etiqueta);
+    }
+  }
+
+  function agrupar(lista) {
+    // Mismo artículo en varias tiendas = una tarjeta. Los que no tienen
+    // identificador van sueltos: agruparlos por título sería adivinar, y este
+    // proyecto no empareja por parecido.
+    const grupos = new Map();
+    for (const o of lista) {
+      const clave = o.articulo === null ? `suelto:${o.tienda}:${o.url}` : `art:${o.articulo}`;
+      if (!grupos.has(clave)) grupos.set(clave, []);
+      grupos.get(clave).push(o);
+    }
+    for (const filas of grupos.values()) filas.sort((a, b) => a.precio - b.precio);
+    return [...grupos.values()];
+  }
+
+  function tarjeta(filas) {
+    // TODO EL PINTADO CON textContent, nada de pintar con marcado directo: los
+    // títulos vienen de las tiendas y traen comillas, `&` y signos de menor que.
+    const mejor = filas[0];
+    const art = document.createElement("article");
+    art.className = "tarjeta" + (mejor.disponible ? "" : " agotado");
+
+    const h = document.createElement("h2");
+    const enlace = document.createElement("a");
+    enlace.href = mejor.url;
+    enlace.target = "_blank";
+    enlace.rel = "noopener noreferrer";
+    enlace.textContent = mejor.titulo;
+    h.appendChild(enlace);
+    art.appendChild(h);
+
+    if (mejor.descuento_pct > 0) {
+      const insignia = document.createElement("span");
+      insignia.className = "insignia";
+      insignia.textContent = `−${mejor.descuento_pct} %`;
+      art.appendChild(insignia);
+
+      const antes = document.createElement("p");
+      antes.className = "antes";
+      antes.textContent =
+        `${pesos(mejor.precio_anterior)} el ${dia(mejor.fecha_anterior)}` +
+        ` ➔ ${pesos(mejor.precio)} el ${dia(mejor.fecha)}`;
+      art.appendChild(antes);
+    }
+
+    const ul = document.createElement("ul");
+    for (const f of filas) {
+      const li = document.createElement("li");
+      li.textContent = `${f.tienda}: ${pesos(f.precio)}`;
+      if (!f.disponible) li.textContent += " (agotado)";
+      ul.appendChild(li);
+    }
+    art.appendChild(ul);
+    return art;
+  }
+
+  function pintar() {
+    const texto = document.getElementById("buscar").value.trim().toLowerCase();
+    const minDesc = Number(document.getElementById("descuento").value);
+    const minPrecio = Number(document.getElementById("precio-min").value) || 0;
+    const maxPrecio = Number(document.getElementById("precio-max").value) || Infinity;
+    const tiendas = [...document.querySelectorAll(".tienda:checked")].map((c) => c.value);
+
+    let visibles = ofertas.filter(
+      (o) =>
+        (!texto || o.titulo.toLowerCase().includes(texto)) &&
+        o.descuento_pct >= minDesc &&
+        o.precio >= minPrecio &&
+        o.precio <= maxPrecio &&
+        (tiendas.length === 0 || tiendas.includes(o.tienda))
+    );
+
+    const orden = document.getElementById("orden").value;
+    const criterios = {
+      descuento: (a, b) => b.descuento_pct - a.descuento_pct,
+      reciente: (a, b) => (b.fecha || "").localeCompare(a.fecha || ""),
+      precio: (a, b) => a.precio - b.precio,
+    };
+    visibles.sort(criterios[orden]);
+
+    // Los agotados, al final, pase lo que pase con el orden elegido.
+    const grupos = agrupar(visibles).sort(
+      (a, b) => Number(b[0].disponible) - Number(a[0].disponible)
+    );
+
+    const destino = document.getElementById("resultados");
+    destino.replaceChildren(...grupos.map(tarjeta));
+    document.getElementById("cuantos").textContent = `${visibles.length} ofertas`;
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    for (const id of ["buscar", "descuento", "precio-min", "precio-max", "orden"]) {
+      document.getElementById(id).addEventListener("input", pintar);
+    }
+    cargar();
+    setInterval(cargar, MEDIA_HORA);
+  });
+</script>
+
+</body>
+</html>
