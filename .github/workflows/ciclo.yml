@@ -16,6 +16,9 @@ permissions:
 jobs:
   ciclo:
     runs-on: ubuntu-latest
+    # Un ciclo normal tarda minutos. Si pasa de veinte está colgado, y más vale
+    # que muera y entre el de la hora siguiente que dejar la cola atascada.
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
@@ -73,11 +76,34 @@ jobs:
             echo "sin cambios en el histórico: no se commitea"
           else
             git commit -m "Histórico del ciclo de $(date -u '+%Y-%m-%d %H:%M UTC')"
+            # Entre el checkout y este push pasan varios minutos. Si algo más
+            # comiteó en la rama mientras tanto, el push no sería avance rápido
+            # y se perdería el volcado de esta hora. El único archivo que este
+            # flujo toca es `data/volcado.sql`, así que reordenar encima de lo
+            # que haya llegado es seguro.
+            git pull --rebase --autostash
             git push
           fi
 
       - name: Generar el portal
         run: python herramientas/generar_portal.py portal
+
+      - name: Publicar el portal
+        env:
+          TOKEN: ${{ secrets.TOKEN_PUBLICACION }}
+        run: |
+          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/aerodriguezc1984/ofertas-web.git" publicacion
+          cp portal/index.html portal/datos.json publicacion/
+          cd publicacion
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html datos.json
+          if git diff --cached --quiet; then
+            echo "la foto no cambió: no se publica"
+          else
+            git commit -m "Ofertas del $(date -u '+%Y-%m-%d %H:%M UTC')"
+            git push
+          fi
 
       - name: Guardar el portal como artefacto
         uses: actions/upload-artifact@v4
