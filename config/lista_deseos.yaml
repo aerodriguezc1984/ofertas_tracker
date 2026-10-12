@@ -8,10 +8,14 @@ vigilados:
       permitir_precio_tarjeta: false
 
 busquedas:
-  - termino: notebook 16gb
-    tienda: paris
-    reglas:
-      precio_maximo: 400000
+  # Paris, desactivado el 2026-10-12. Responde 403 a las direcciones de centro
+  # de datos: funciona desde una red doméstica y no desde GitHub. Medido con
+  # `herramientas/sonda_entorno.py`. El adaptador `src/fuentes/paris.py` NO se
+  # ha tocado y sigue probado: descomentar estas cuatro líneas lo devuelve.
+  # - termino: notebook 16gb
+  #   tienda: paris
+  #   reglas:
+  #     precio_maximo: 400000
 
   # «notebook 16gb» devolvía casi solo reacondicionados de marketplace, cuyas
   # fichas no se pueden confirmar: su `sellerSkuId` es el código interno del
