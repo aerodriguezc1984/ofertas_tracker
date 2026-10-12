@@ -1,0 +1,120 @@
+name: Ciclo horario
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+# Dos ciclos a la vez escribirían la misma base y se pisarían el volcado.
+concurrency:
+  group: ciclo
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  ciclo:
+    runs-on: ubuntu-latest
+    # Un ciclo normal tarda minutos. Si pasa de veinte está colgado, y más vale
+    # que muera y entre el de la hora siguiente que dejar la cola atascada.
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # `git pull --rebase` sobre un clon superficial se rompe a veces, y
+          # el historial entero cuesta lo mismo en un repositorio de este tamaño.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install requests PyYAML python-dotenv
+
+      # El histórico vive en el repositorio como SQL. Si es el primer ciclo no
+      # hay nada que restaurar, y arrancar en frío es correcto. Pero si el
+      # archivo SÍ está y `restaurar()` lo rechaza, hay que parar aquí: seguir
+      # dejaría correr el ciclo sobre una base vacía, y el paso «Volcar el
+      # histórico» de abajo escribiría esa base vacía ENCIMA del volcado bueno.
+      # El histórico no se perdería al restaurar, sino al volcar.
+      - name: Restaurar el histórico
+        run: |
+          python -c "
+          import sys; sys.path.insert(0, 'src')
+          from pathlib import Path
+          from almacen.volcado import restaurar
+          habia = Path('data/volcado.sql').exists()
+          restaurado = restaurar('data/volcado.sql', 'data/tracker.db')
+          print('volcado en el repositorio:', habia, '/ restaurado:', restaurado)
+          if habia and not restaurado:
+              raise SystemExit('El volcado existe pero no se pudo restaurar. Paro antes de volcar una base vacia encima del historico.')
+          "
+
+      - name: Correr el ciclo
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python runner.py
+
+      # Los pasos de abajo solo corren si el ciclo terminó bien: un ciclo que
+      # falló a mitad no debe commitear una base trunca ni publicar una foto
+      # incompleta.
+      - name: Volcar el histórico
+        run: |
+          python -c "
+          import sys; sys.path.insert(0, 'src')
+          from almacen.conexion import abrir
+          from almacen.volcado import volcar
+          sentencias = volcar(abrir('data/tracker.db'), 'data/volcado.sql')
+          print('sentencias:', sentencias)
+          if not sentencias:
+              raise SystemExit('El volcado saldria vacio o solo con el esquema: no se escribe encima del historico.')
+          "
+
+      - name: Commitear el volcado si cambió
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/volcado.sql
+          if git diff --cached --quiet; then
+            echo "sin cambios en el histórico: no se commitea"
+          else
+            git commit -m "Histórico del ciclo de $(date -u '+%Y-%m-%d %H:%M UTC')"
+            # Entre el checkout y este push pasan varios minutos. Si algo más
+            # comiteó en la rama mientras tanto, el push no sería avance rápido
+            # y se perdería el volcado de esta hora. El único archivo que este
+            # flujo toca es `data/volcado.sql`, así que reordenar encima de lo
+            # que haya llegado es seguro.
+            git pull --rebase --autostash
+            git push
+          fi
+
+      - name: Generar el portal
+        run: python herramientas/generar_portal.py portal
+
+      - name: Publicar el portal
+        env:
+          TOKEN: ${{ secrets.TOKEN_PUBLICACION }}
+        run: |
+          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/aerodriguezc1984/ofertas-web.git" publicacion
+          cp portal/index.html portal/datos.json publicacion/
+          cd publicacion
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html datos.json
+          if git diff --cached --quiet; then
+            echo "la foto no cambió: no se publica"
+          else
+            git commit -m "Ofertas del $(date -u '+%Y-%m-%d %H:%M UTC')"
+            git push
+          fi
+
+      - name: Guardar el portal como artefacto
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal
+          path: portal/

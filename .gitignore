@@ -2,8 +2,20 @@
 .env
 
 # Base de datos, logs y reportes generados.
-data/
+# (data/* y no data/: con el directorio entero excluido, git no recorre su
+# contenido y la excepción de abajo no tendría ningún efecto.)
+data/*
+# ...pero el volcado SÍ se versiona: es como el histórico viaja entre
+# ejecuciones en la nube, donde cada una arranca en una máquina nueva.
+!data/volcado.sql
 logs/
+
+# Lo que genera el portal al pie del árbol: la carpeta que escribe
+# `generar_portal.py` y el clon del repositorio público que hace el flujo.
+# Ninguna de las dos es del proyecto; se rehacen en cada ciclo.
+portal/
+publicacion/
+
 *.db
 *.db-wal
 *.db-shm

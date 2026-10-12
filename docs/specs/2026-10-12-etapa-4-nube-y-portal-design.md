@@ -35,8 +35,13 @@ equivocado.
 
 - El ciclo corre en GitHub Actions, cada hora, sin depender de ningún equipo encendido.
 - El histórico sobrevive entre ejecuciones como **volcado SQL en texto** dentro del repositorio.
-- Un **portal web** estático, accesible desde cualquier sitio, con búsqueda, filtros, orden e
-  historial de cada producto.
+- Un **portal web** estático, accesible desde cualquier sitio, con búsqueda, filtros y orden.
+
+  > **Aplazado a la etapa 5 (anotado el 2026-10-12, al cerrar la etapa).** Esta línea prometía
+  > además «historial de cada producto», y lo entregado enseña el precio actual, el anterior y el
+  > mínimo, nada más. La sección «Qué hace el portal», más abajo, nunca lo mencionó: era un resto
+  > del alcance inicial que no llegó a ninguna tarea. Se deja escrito en vez de borrarlo, porque lo
+  > que se promete y no se entrega es justo lo que se olvida que faltaba.
 - Dos repositorios: el privado con todo, y uno público con solo la foto de ofertas.
 - Paris se desactiva **por configuración**, no se borra.
 

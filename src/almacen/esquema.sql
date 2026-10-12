@@ -2,6 +2,11 @@
 -- `COLUMNAS_NUEVAS` (almacen/conexion.py), para que una base ya creada la
 -- reciba por migración; `CREATE TABLE IF NOT EXISTS` no la lleva a una base
 -- existente. Ninguna prueba lo vigila: todas crean la base desde cero.
+--
+-- Toda tabla o índice que se añada aquí sube el recuento de sentencias de una
+-- base vacía, y `SENTENCIAS_DE_UN_ESQUEMA_VACIO` (almacen/volcado.py) tiene
+-- margen cero: hay que volver a medir y subirla. Si no, un volcado vacío deja
+-- de rechazarse y puede borrar el histórico.
 CREATE TABLE IF NOT EXISTS productos (
     id              INTEGER PRIMARY KEY,
     tienda          TEXT    NOT NULL,
