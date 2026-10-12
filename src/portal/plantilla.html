@@ -5,31 +5,47 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ofertas — Rastreador de precios</title>
 <style>
+  /* El vocabulario visual sale del retail chileno: la etiqueta amarilla de
+     góndola con tinta negra, y la lista de precios con guía punteada. Sin una
+     sola fuente web ni un archivo externo —la regla del proyecto es que esta
+     página se sirva sola—, así que la personalidad tiene que salir de pilas de
+     fuentes del sistema y de CSS. */
   :root {
-    --bg: #f3f4f8;
-    --superficie: #ffffff;
-    --texto: #1b1e24;
-    --texto-tenue: #5b6270;
-    --borde: #e1e4ea;
-    --acento: #c6392b;
-    --acento-suave: #fbe3e0;
-    --enlace: #1a5fb4;
-    --radio: 10px;
-    --radio-sm: 6px;
-    --sombra: 0 1px 3px rgba(0, 0, 0, .08), 0 1px 2px rgba(0, 0, 0, .06);
+    --papel: #e9ebee;
+    --papel-alto: #f7f8fa;
+    --tinta: #15171c;
+    --tinta-suave: #5c6472;
+    --filete: #d2d6dd;
+    --oferta: #f5b301;
+    --oferta-borde: #c08b00;
+    --oferta-tinta: #15171c;
+    --enlace: #1b4fa0;
+    --trama: rgba(21, 23, 28, .035);
+    --velo: rgba(255, 255, 255, .55);
+    --radio: 3px;
+    --sombra-pegatina: 0 2px 0 var(--oferta-borde), 0 7px 16px rgba(0, 0, 0, .16);
+
+    /* Condensada y pesada para los montos: es la letra de una etiqueta de
+       precio, y las cifras tabulares hacen que las columnas cuadren. */
+    --condensada: "Arial Narrow", "Helvetica Neue Condensed", "Liberation Sans Narrow",
+                  "Segoe UI", system-ui, sans-serif;
+    --texto: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
 
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #14161a;
-      --superficie: #1e2127;
-      --texto: #e7e9ee;
-      --texto-tenue: #9aa1ad;
-      --borde: #2b2f37;
-      --acento: #ff6b5e;
-      --acento-suave: #3a211f;
-      --enlace: #7db4ff;
-      --sombra: 0 1px 4px rgba(0, 0, 0, .5);
+      --papel: #121419;
+      --papel-alto: #1b1e25;
+      --tinta: #e9ecf2;
+      --tinta-suave: #99a1b0;
+      --filete: #2b3038;
+      --oferta: #ffc425;
+      --oferta-borde: #93700a;
+      --oferta-tinta: #15171c;
+      --enlace: #86b4ff;
+      --trama: rgba(255, 255, 255, .03);
+      --velo: rgba(255, 255, 255, .05);
+      --sombra-pegatina: 0 2px 0 var(--oferta-borde), 0 7px 18px rgba(0, 0, 0, .5);
     }
   }
 
@@ -37,33 +53,65 @@
 
   body {
     margin: 0;
-    background: var(--bg);
-    color: var(--texto);
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    line-height: 1.4;
+    background: var(--papel);
+    color: var(--tinta);
+    font-family: var(--texto);
+    line-height: 1.45;
+  }
+
+  /* El papel: dos tramas finísimas y un velo que cae desde arriba. Pesa cero
+     bytes y evita el plano liso de siempre. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(90deg, var(--trama) 0 1px, transparent 1px 4px),
+      repeating-linear-gradient(0deg, var(--trama) 0 1px, transparent 1px 4px),
+      radial-gradient(130% 70% at 50% -10%, var(--velo), transparent 65%);
   }
 
   a { color: var(--enlace); }
 
   header {
-    padding: 1.25rem 1rem .5rem;
     max-width: 1100px;
     margin: 0 auto;
+    padding: 1.5rem 1rem .75rem;
   }
 
   header h1 {
-    margin: 0 0 .15rem;
-    font-size: clamp(1.3rem, 1rem + 1.5vw, 1.8rem);
+    margin: 0;
+    font-family: var(--condensada);
+    font-weight: 700;
+    font-size: clamp(2rem, 1.3rem + 3.2vw, 3.1rem);
+    letter-spacing: -.015em;
+    line-height: .95;
+  }
+
+  /* El filo amarillo bajo el título es el mismo que marca una tarjeta rebajada:
+     el color significa lo mismo en los dos sitios. */
+  header h1::after {
+    content: "";
+    display: block;
+    width: 2.4rem;
+    height: 5px;
+    margin-top: .5rem;
+    background: var(--oferta);
   }
 
   #sincronizacion {
-    margin: 0;
-    color: var(--texto-tenue);
-    font-size: .85rem;
+    margin: .6rem 0 0;
+    color: var(--tinta-suave);
+    font-size: .82rem;
   }
 
   #sincronizacion.falla {
-    color: var(--acento);
+    display: inline;
+    background: var(--oferta);
+    color: var(--oferta-tinta);
+    box-shadow: -.35rem 0 0 var(--oferta), .35rem 0 0 var(--oferta);
     font-weight: 600;
   }
 
@@ -76,24 +124,31 @@
   .controles {
     display: flex;
     flex-wrap: wrap;
-    gap: .6rem;
+    gap: .5rem;
     align-items: center;
-    background: var(--superficie);
-    border: 1px solid var(--borde);
-    border-radius: var(--radio-sm);
-    padding: .75rem;
-    margin-bottom: .75rem;
+    padding: .7rem;
+    background: var(--papel-alto);
+    border: 1px solid var(--filete);
+    border-radius: var(--radio);
   }
 
   .controles input[type="search"],
   .controles input[type="number"],
   .controles select {
-    border: 1px solid var(--borde);
-    border-radius: var(--radio-sm);
-    background: var(--bg);
-    color: var(--texto);
-    padding: .45rem .55rem;
+    border: 1px solid var(--filete);
+    border-radius: var(--radio);
+    background: var(--papel);
+    color: var(--tinta);
+    font-family: var(--texto);
     font-size: .9rem;
+    padding: .45rem .55rem;
+  }
+
+  .controles input::placeholder { color: var(--tinta-suave); }
+
+  :focus-visible {
+    outline: 2px solid var(--oferta-borde);
+    outline-offset: 2px;
   }
 
   #buscar { flex: 1 1 220px; min-width: 0; }
@@ -101,120 +156,215 @@
   .precio-rango { display: flex; gap: .4rem; flex: 1 1 200px; }
   .precio-rango input { width: 100%; min-width: 0; }
 
+  /* --- Las tiendas, como etiquetas colgadas de su agujero --- */
+
   fieldset.tiendas-caja {
-    border: 1px solid var(--borde);
-    border-radius: var(--radio-sm);
-    background: var(--superficie);
-    padding: .5rem .75rem .75rem;
-    margin: 0 0 .75rem;
+    border: 0;
+    border-top: 1px solid var(--filete);
+    padding: .85rem 0 0;
+    margin: 1rem 0 .6rem;
   }
 
   fieldset.tiendas-caja legend {
-    padding: 0 .3rem;
-    color: var(--texto-tenue);
+    padding: 0 .5rem 0 0;
+    color: var(--tinta-suave);
     font-size: .8rem;
   }
 
   #tiendas {
     display: flex;
     flex-wrap: wrap;
-    gap: .4rem .9rem;
+    gap: .45rem;
   }
 
   .etiqueta-tienda {
+    cursor: pointer;
+    line-height: 1;
+  }
+
+  .etiqueta-tienda .tienda {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* La etiqueta de verdad: papel, filete, y el troquel por donde iría el hilo. */
+  .pieza {
     display: inline-flex;
     align-items: center;
-    gap: .35rem;
+    gap: .45rem;
+    padding: .34rem .6rem .34rem .5rem;
+    background: var(--papel-alto);
+    border: 1px solid var(--filete);
+    border-radius: var(--radio);
+    color: var(--tinta);
     font-size: .85rem;
-    cursor: pointer;
+    transition: transform .12s ease, background-color .12s ease, box-shadow .12s ease;
+  }
+
+  .pieza::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--papel);
+    box-shadow: inset 0 0 0 1px var(--filete);
+  }
+
+  .cuenta {
+    font-family: var(--condensada);
+    font-variant-numeric: tabular-nums;
+    font-size: .95rem;
+    color: var(--tinta-suave);
+  }
+
+  .etiqueta-tienda:hover .pieza { transform: translateY(-1px); }
+
+  .tienda:checked ~ .pieza {
+    background: var(--oferta);
+    border-color: var(--oferta-borde);
+    color: var(--oferta-tinta);
+    box-shadow: 0 2px 0 var(--oferta-borde);
+  }
+
+  .tienda:checked ~ .pieza .cuenta { color: var(--oferta-tinta); }
+  .tienda:checked ~ .pieza::before { box-shadow: inset 0 0 0 1px var(--oferta-borde); }
+  .tienda:focus-visible ~ .pieza { outline: 2px solid var(--oferta-borde); outline-offset: 2px; }
+
+  /* Quitar los filtros no es una tienda: va sin troquel. */
+  button.pieza { font: inherit; font-size: .85rem; cursor: pointer; }
+  .pieza.todas { padding-left: .6rem; font-weight: 600; }
+  .pieza.todas::before { display: none; }
+
+  /* Cuarenta etiquetas en una pantalla de móvil son ocho filas antes de ver
+     una sola oferta. Se quedan en su propia caja con desplazamiento: siguen
+     todas ahí, pero no entierran lo que se viene a mirar. */
+  @media (max-width: 620px) {
+    #tiendas {
+      max-height: 7.4rem;
+      overflow-y: auto;
+      padding: .1rem .3rem .1rem .1rem;
+      border: 1px solid var(--filete);
+      border-radius: var(--radio);
+      background: var(--papel-alto);
+    }
   }
 
   #cuantos {
-    color: var(--texto-tenue);
-    font-size: .85rem;
-    margin: 0 0 .75rem;
+    margin: 0 0 .9rem;
+    color: var(--tinta-suave);
+    font-size: .82rem;
   }
+
+  /* --- Las tarjetas --- */
 
   .resultados {
     display: grid;
     grid-template-columns: 1fr;
-    gap: .9rem;
-    padding-bottom: 2rem;
+    gap: 1.15rem .9rem;
+    padding-bottom: 3rem;
   }
 
   @media (min-width: 620px) {
-    .resultados {
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    }
+    .resultados { grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); }
   }
 
   .tarjeta {
-    background: var(--superficie);
-    border: 1px solid var(--borde);
-    border-radius: var(--radio);
-    box-shadow: var(--sombra);
-    padding: .9rem;
+    position: relative;
     display: flex;
     flex-direction: column;
-    gap: .4rem;
-    position: relative;
+    gap: .5rem;
+    padding: .85rem .9rem;
+    background: var(--papel-alto);
+    border: 1px solid var(--filete);
+    border-left: 3px solid var(--filete);
+    border-radius: var(--radio);
   }
 
+  /* El amarillo solo aparece donde hay una bajada medida por nosotros. */
+  .tarjeta.rebajada { border-left-color: var(--oferta); }
+
   .tarjeta.agotado {
-    opacity: .55;
-    filter: grayscale(.4);
+    opacity: .6;
+    filter: grayscale(.5);
   }
 
   .tarjeta h2 {
     margin: 0;
-    font-size: 1rem;
-    line-height: 1.3;
-    padding-right: 3.5rem;
+    padding-right: 3.6rem;
+    font-family: var(--condensada);
+    font-weight: 700;
+    font-size: 1.12rem;
+    letter-spacing: -.005em;
+    line-height: 1.15;
   }
 
-  .tarjeta h2 a {
-    text-decoration: none;
-  }
+  /* El título no se pinta de azul: el único color de esta página es el amarillo
+     de la etiqueta, y un enlace azul por tarjeta se lo comería. */
+  .tarjeta h2 a { color: inherit; text-decoration: none; }
+  .tarjeta h2 a:hover { text-decoration: underline; }
 
-  .tarjeta h2 a:hover {
-    text-decoration: underline;
-  }
-
+  /* La pegatina: lo único girado y lo único con sombra de toda la página. */
   .insignia {
     position: absolute;
-    top: .8rem;
-    right: .8rem;
-    background: var(--acento);
-    color: #fff;
-    font-size: .75rem;
+    top: -.6rem;
+    right: .7rem;
+    background: var(--oferta);
+    color: var(--oferta-tinta);
+    font-family: var(--condensada);
     font-weight: 700;
-    padding: .15rem .45rem;
-    border-radius: 999px;
+    font-size: 1.1rem;
+    font-variant-numeric: tabular-nums;
+    padding: .1rem .45rem .16rem;
+    border-radius: 2px;
+    transform: rotate(-2.5deg);
+    box-shadow: var(--sombra-pegatina);
   }
 
   .antes {
     margin: 0;
-    font-size: .8rem;
-    color: var(--texto-tenue);
-    background: var(--acento-suave);
-    border-radius: var(--radio-sm);
-    padding: .3rem .5rem;
+    color: var(--tinta-suave);
+    font-size: .78rem;
   }
 
-  .tarjeta ul {
+  .antes .viejo { text-decoration: line-through; }
+
+  .destacado {
+    display: flex;
+    align-items: baseline;
+    gap: .45rem;
+    flex-wrap: wrap;
+  }
+
+  .precio {
+    font-family: var(--condensada);
+    font-weight: 700;
+    font-size: clamp(1.7rem, 1.3rem + 1.4vw, 2.15rem);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em;
+    line-height: 1;
+  }
+
+  .donde { color: var(--tinta-suave); font-size: .85rem; }
+
+  .otras {
     list-style: none;
     margin: 0;
-    padding: 0;
+    padding: .5rem 0 0;
+    border-top: 1px solid var(--filete);
     display: flex;
     flex-direction: column;
-    gap: .15rem;
-    font-size: .9rem;
+    gap: .25rem;
+    font-size: .85rem;
   }
 
-  .tarjeta ul li:first-child {
-    font-weight: 700;
-    font-size: 1.1rem;
-  }
+  /* Guía punteada entre el nombre y el monto, como en una lista de precios. */
+  .fila-tienda { display: flex; align-items: baseline; gap: .4rem; }
+  .fila-tienda .guia { flex: 1; border-bottom: 1px dotted var(--filete); }
+  .fila-tienda .monto { font-variant-numeric: tabular-nums; }
+  .fila-tienda.sin-stock { color: var(--tinta-suave); }
 
   @media (prefers-reduced-motion: reduce) {
     * { transition: none !important; animation: none !important; }
@@ -224,7 +374,7 @@
 <body>
 
 <header>
-  <h1>Ofertas — Rastreador de precios</h1>
+  <h1>Ofertas</h1>
   <p id="sincronizacion">Cargando…</p>
 </header>
 
@@ -320,8 +470,8 @@
       ultimaSincronizacion = horaDeAhora();
       aviso.classList.remove("falla");
       aviso.textContent =
-        `${datos.productos} productos de ${datos.tiendas} tiendas · datos del ` +
-        `${datos.generado_el} UTC · última sincronización: ${ultimaSincronizacion}`;
+        `${datos.productos} productos de ${datos.tiendas} tiendas. Precios del ` +
+        `${datos.generado_el} UTC, revisados a las ${ultimaSincronizacion}.`;
       poblarTiendas();
       pintar();
     } catch (error) {
@@ -337,16 +487,31 @@
   }
 
   function poblarTiendas() {
-    // Una casilla por tienda distinta. Se conserva lo que ya estaba marcado,
-    // para que el refresco automático no borre el filtro que eligió la
-    // persona que mira la página.
+    // Una etiqueta por tienda, con cuántas ofertas trae cada una. Se conserva
+    // lo que ya estaba marcado, para que el refresco automático no borre el
+    // filtro que eligió la persona que mira la página.
     const contenedor = document.getElementById("tiendas");
     const marcadas = new Set(
       [...contenedor.querySelectorAll(".tienda:checked")].map((c) => c.value)
     );
     contenedor.replaceChildren();
 
-    const distintas = [...new Set(ofertas.map((o) => o.tienda))].sort();
+    const cuentas = new Map();
+    for (const o of ofertas) cuentas.set(o.tienda, (cuentas.get(o.tienda) || 0) + 1);
+    const distintas = [...cuentas.keys()].sort();
+
+    // Con cuarenta tiendas, desmarcarlas una a una es trabajo que la página
+    // puede ahorrarle a quien la mira.
+    const limpiar = document.createElement("button");
+    limpiar.type = "button";
+    limpiar.className = "pieza todas";
+    limpiar.textContent = `todas (${distintas.length})`;
+    limpiar.addEventListener("click", () => {
+      for (const c of contenedor.querySelectorAll(".tienda")) c.checked = false;
+      pintar();
+    });
+    contenedor.appendChild(limpiar);
+
     for (const nombre of distintas) {
       const etiqueta = document.createElement("label");
       etiqueta.className = "etiqueta-tienda";
@@ -359,14 +524,24 @@
       casilla.addEventListener("change", pintar);
       etiqueta.appendChild(casilla);
 
+      // La casilla real queda oculta pero enfocable; lo que se ve y se pulsa es
+      // esta pieza, que es la etiqueta de góndola con su troquel.
+      const pieza = document.createElement("span");
+      pieza.className = "pieza";
+
       const texto = document.createElement("span");
       texto.textContent = nombre;
-      etiqueta.appendChild(texto);
+      pieza.appendChild(texto);
 
+      const cuenta = document.createElement("span");
+      cuenta.className = "cuenta";
+      cuenta.textContent = cuentas.get(nombre);
+      pieza.appendChild(cuenta);
+
+      etiqueta.appendChild(pieza);
       contenedor.appendChild(etiqueta);
     }
   }
-
   function agrupar(lista, criterio) {
     // Mismo artículo en varias tiendas = una tarjeta. Los que no tienen
     // identificador van sueltos: agruparlos por título sería adivinar, y este
@@ -395,7 +570,10 @@
     // títulos vienen de las tiendas y traen comillas, `&` y signos de menor que.
     const mejor = filas[0];
     const art = document.createElement("article");
-    art.className = "tarjeta" + (hayStock(filas) ? "" : " agotado");
+    art.className =
+      "tarjeta" +
+      (hayStock(filas) ? "" : " agotado") +
+      (mejor.descuento_pct > 0 ? " rebajada" : "");
 
     const h = document.createElement("h2");
     const destino = urlSegura(mejor.url);
@@ -417,26 +595,73 @@
       insignia.className = "insignia";
       insignia.textContent = `−${mejor.descuento_pct} %`;
       art.appendChild(insignia);
+    }
 
+    // El monto es lo que se viene a mirar: va grande y en cifras tabulares.
+    const destacado = document.createElement("p");
+    destacado.className = "destacado";
+
+    const precio = document.createElement("span");
+    precio.className = "precio";
+    precio.textContent = pesos(mejor.precio);
+    destacado.appendChild(precio);
+
+    const donde = document.createElement("span");
+    donde.className = "donde";
+    donde.textContent = mejor.disponible
+      ? `${mejor.tienda}, ${dia(mejor.fecha)}`
+      : `${mejor.tienda} (agotado)`;
+    destacado.appendChild(donde);
+    art.appendChild(destacado);
+
+    if (mejor.descuento_pct > 0) {
       const antes = document.createElement("p");
       antes.className = "antes";
-      antes.textContent =
-        `${pesos(mejor.precio_anterior)} el ${dia(mejor.fecha_anterior)}` +
-        ` ➔ ${pesos(mejor.precio)} el ${dia(mejor.fecha)}`;
+
+      const rotulo = document.createElement("span");
+      rotulo.textContent = "antes ";
+      antes.appendChild(rotulo);
+
+      const viejo = document.createElement("span");
+      viejo.className = "viejo";
+      viejo.textContent = pesos(mejor.precio_anterior);
+      antes.appendChild(viejo);
+
+      const cuando = document.createElement("span");
+      cuando.textContent = `, el ${dia(mejor.fecha_anterior)}`;
+      antes.appendChild(cuando);
+
       art.appendChild(antes);
     }
 
-    const ul = document.createElement("ul");
-    for (const f of filas) {
-      const li = document.createElement("li");
-      li.textContent = `${f.tienda}: ${pesos(f.precio)}`;
-      if (!f.disponible) li.textContent += " (agotado)";
-      ul.appendChild(li);
+    // Las demás tiendas del mismo artículo, con guía punteada hasta el monto,
+    // como en una lista de precios.
+    if (filas.length > 1) {
+      const ul = document.createElement("ul");
+      ul.className = "otras";
+      for (const f of filas.slice(1)) {
+        const li = document.createElement("li");
+        li.className = "fila-tienda" + (f.disponible ? "" : " sin-stock");
+
+        const nombre = document.createElement("span");
+        nombre.textContent = f.disponible ? f.tienda : `${f.tienda} (agotado)`;
+        li.appendChild(nombre);
+
+        const guia = document.createElement("span");
+        guia.className = "guia";
+        li.appendChild(guia);
+
+        const monto = document.createElement("span");
+        monto.className = "monto";
+        monto.textContent = pesos(f.precio);
+        li.appendChild(monto);
+
+        ul.appendChild(li);
+      }
+      art.appendChild(ul);
     }
-    art.appendChild(ul);
     return art;
   }
-
   function pintar() {
     const texto = plano(document.getElementById("buscar").value.trim());
     const minDesc = Number(document.getElementById("descuento").value);

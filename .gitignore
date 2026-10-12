@@ -13,8 +13,10 @@ logs/
 # Lo que genera el portal al pie del árbol: la carpeta que escribe
 # `generar_portal.py` y el clon del repositorio público que hace el flujo.
 # Ninguna de las dos es del proyecto; se rehacen en cada ciclo.
-portal/
-publicacion/
+# Con la barra delante: solo la carpeta de la raíz. Sin ella, el patrón casa
+# con CUALQUIER carpeta llamada así, y `src/portal/` es código del proyecto.
+/portal/
+/publicacion/
 
 *.db
 *.db-wal
