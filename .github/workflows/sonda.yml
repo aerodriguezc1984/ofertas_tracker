@@ -1,0 +1,61 @@
+# Fase 0 de la migración a la nube: ¿responden las tiendas desde aquí?
+#
+# NO ejecuta el ciclo ni manda alertas. Solo pregunta y mide, porque de la
+# respuesta depende si el rastreador puede vivir fuera de un equipo doméstico:
+# el retail chileno filtra direcciones de centro de datos, y un bloqueo no
+# siempre llega como un 403 —a veces es un 200 con una página puente vacía—.
+#
+# Se lanza a mano desde la pestaña Actions. Sin disparador programado a
+# propósito: primero se mide, después se decide.
+#
+# Medición de control, desde una conexión doméstica chilena el 2026-10-11:
+# los cuatro destinos respondieron con lo que hace falta.
+
+name: Sonda — ¿nos responden las tiendas?
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sondear:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install requests PyYAML python-dotenv
+
+      # La decisiva: dice si el cuerpo que llega trae lo que el rastreador
+      # necesita, no solo si hubo respuesta.
+      - name: ¿Responden las tiendas desde el runner?
+        id: entorno
+        continue-on-error: true
+        run: python herramientas/sonda_entorno.py
+
+      # Las tres de siempre, que además comprueban que el análisis funciona.
+      # `continue-on-error` en todas: queremos las tres respuestas, no parar
+      # en la primera que falle.
+      - name: Sonda SoloTodo
+        continue-on-error: true
+        run: python herramientas/sonda_solotodo.py notebook
+
+      - name: Sonda Paris
+        continue-on-error: true
+        run: python herramientas/sonda_paris.py notebook
+
+      - name: Sonda Falabella
+        continue-on-error: true
+        run: python herramientas/sonda_falabella.py notebook
+
+      - name: Qué significa el resultado
+        run: |
+          echo "Si los cuatro destinos SIRVEN: el rastreador puede vivir aquí."
+          echo "Si solo falla SoloTodo: raro, es una API pública. Mirar la red."
+          echo "Si fallan Paris y Falabella pero SoloTodo no: es la IP del"
+          echo "  runner. En la nube quedaría solo el agregador, y habría que"
+          echo "  decidir si compensa o si hace falta un servidor en Chile."
