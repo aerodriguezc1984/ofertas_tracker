@@ -1,11 +1,16 @@
 vigilados:
-  - nombre: Home Panel Mónaco TV 55
-    tienda: paris
-    url: https://www.paris.cl/home-panel-monaco-tv-55-1-6-castano-off-white-MK2GCAHDUR.html
-    reglas:
-      precio_maximo: 200000
-      descuento_minimo_pct: 15
-      permitir_precio_tarjeta: false
+  # Igual que la búsqueda de Paris de más abajo: desactivado el 2026-10-12
+  # porque Paris responde 403 desde la nube. Dejarlo activo no rompería nada,
+  # pero sí registraría un aviso 24 veces al día por una tienda que no
+  # responde, y eso no es un error: es una tienda desactivada a propósito.
+  # Descomentarlo lo devuelve.
+  # - nombre: Home Panel Mónaco TV 55
+  #   tienda: paris
+  #   url: https://www.paris.cl/home-panel-monaco-tv-55-1-6-castano-off-white-MK2GCAHDUR.html
+  #   reglas:
+  #     precio_maximo: 200000
+  #     descuento_minimo_pct: 15
+  #     permitir_precio_tarjeta: false
 
 busquedas:
   # Paris, desactivado el 2026-10-12. Responde 403 a las direcciones de centro

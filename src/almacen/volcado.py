@@ -22,11 +22,20 @@ SENTENCIAS_DE_UN_ESQUEMA_VACIO = 8
 
 
 def volcar(con: sqlite3.Connection, ruta_sql: Path | str) -> int:
-    """Escribe la base entera como SQL. Devuelve cuántas sentencias salieron."""
+    """Escribe la base entera como SQL. Devuelve cuántas sentencias salieron.
+
+    Devuelve 0 **sin escribir nada** si el volcado saldría vacío o con solo el
+    esquema. Escribir eso encima del volcado bueno es el mismo desastre que
+    restaurarlo, una hora antes: aquí todavía se puede no hacer. Quien llama
+    tiene que mirar el 0 y parar.
+    """
     ruta_sql = Path(ruta_sql)
-    ruta_sql.parent.mkdir(parents=True, exist_ok=True)
 
     sentencias = list(con.iterdump())
+    if len(sentencias) < SENTENCIAS_DE_UN_ESQUEMA_VACIO:
+        return 0
+
+    ruta_sql.parent.mkdir(parents=True, exist_ok=True)
     ruta_sql.write_text("\n".join(sentencias) + "\n", encoding="utf-8")
     return len(sentencias)
 
@@ -73,6 +82,11 @@ def restaurar(ruta_sql: Path | str, ruta_db: Path | str) -> bool:
     if not entero:
         a_medias.unlink(missing_ok=True)
         return False
+
+    # SQLite reproduce un `-wal` huérfano encima de la base que encuentre. Si se
+    # deja ahí, la restauración «funciona» y la base sigue siendo la vieja.
+    for sufijo in ("-wal", "-shm"):
+        ruta_db.with_name(ruta_db.name + sufijo).unlink(missing_ok=True)
 
     a_medias.replace(ruta_db)
     return True

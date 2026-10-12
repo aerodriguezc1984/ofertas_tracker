@@ -1,7 +1,9 @@
 """Escribe el portal: la página y su foto de datos.
 
-No toca la red ni la base más que para leer. Se ejecuta al final de cada ciclo,
-y también a mano para mirar el portal en local:
+No toca la red. De la base solo lee los datos del portal, pero `abrir()` sí le
+aplica el esquema, las migraciones y `PRAGMA journal_mode=WAL` si hacen falta.
+Se ejecuta al final de cada ciclo, y también a mano para mirar el portal en
+local:
 
     python herramientas/generar_portal.py              # a ./portal
     python herramientas/generar_portal.py /otra/ruta
@@ -48,11 +50,19 @@ def generar(
 
 def main() -> int:
     destino = Path(sys.argv[1]) if len(sys.argv) > 1 else RAIZ / "portal"
-    con = abrir(RAIZ / "data" / "tracker.db")
+    base = RAIZ / "data" / "tracker.db"
+    if not base.exists():
+        # `abrir()` la crearía vacía y el portal saldría con cero productos,
+        # listo para publicarse encima de la foto buena.
+        print(f"no existe {base}: no hay nada que publicar")
+        return 1
+
+    con = abrir(base)
     html, datos = generar(con, destino)
     print(f"escrito {html}")
     print(f"escrito {datos} ({datos.stat().st_size // 1024} KB)")
-    print(f"\nábrelo con: start {html}")
+    # Por `file://` el navegador bloquea el fetch del JSON: hay que servirlo.
+    print(f"\nmíralo con:  python -m http.server -d {destino}")
     return 0
 
 

@@ -9,6 +9,8 @@ portal no la relaja.
 import sqlite3
 from datetime import datetime, timezone
 
+from almacen.operaciones import minimo_historico
+
 # `LAG` da la lectura previa del mismo producto sin traerse el histórico entero.
 # El desempate por `id` hace falta porque `capturado_el` tiene resolución de
 # segundo y dos lecturas pueden empatar.
@@ -29,7 +31,8 @@ WITH ordenadas AS (
            ) AS fila
       FROM historico_precios h
 )
-SELECT p.producto_solotodo AS articulo,
+SELECT p.id AS producto_id,
+       p.producto_solotodo AS articulo,
        p.tienda,
        p.titulo,
        p.url,
@@ -38,11 +41,7 @@ SELECT p.producto_solotodo AS articulo,
        o.precio_internet,
        o.capturado_el,
        o.precio_anterior,
-       o.fecha_anterior,
-       (SELECT MIN(h2.precio_internet)
-          FROM historico_precios h2
-         WHERE h2.producto_id = p.id
-           AND h2.capturado_el >= datetime('now', :ventana)) AS minimo
+       o.fecha_anterior
   FROM ordenadas o
   JOIN productos p ON p.id = o.producto_id
  WHERE o.fila = 1
@@ -61,9 +60,7 @@ def _descuento(precio: int, anterior: int | None) -> int:
 
 def datos_del_portal(con: sqlite3.Connection, ventana_dias: int = 90) -> dict:
     """La foto que consume la página. No escribe nada."""
-    filas = con.execute(
-        _CONSULTA, {"ventana": f"-{int(ventana_dias)} days"}
-    ).fetchall()
+    filas = con.execute(_CONSULTA).fetchall()
 
     ofertas = []
     for f in filas:
@@ -80,7 +77,10 @@ def datos_del_portal(con: sqlite3.Connection, ventana_dias: int = 90) -> dict:
                 "precio_anterior": f["precio_anterior"],
                 "fecha_anterior": f["fecha_anterior"],
                 "descuento_pct": _descuento(f["precio_internet"], f["precio_anterior"]),
-                "minimo_historico": f["minimo"],
+                # El mínimo no se calcula aquí: `almacen.operaciones.minimo_historico`
+                # ya sabe sumar la última fila anterior a la ventana, que es lo que
+                # vale para un precio fijado hace tiempo y nunca vuelto a cambiar.
+                "minimo_historico": minimo_historico(con, f["producto_id"], ventana_dias),
             }
         )
 

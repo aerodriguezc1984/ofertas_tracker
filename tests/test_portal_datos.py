@@ -135,6 +135,20 @@ def test_el_desempate_por_id_deshace_el_empate_del_mismo_segundo(tmp_path):
     assert oferta["precio_anterior"] == 120000
 
 
+def test_el_minimo_cuenta_un_precio_fijado_antes_de_la_ventana(tmp_path):
+    """Solo se guardan variaciones: un precio quieto no tiene fila dentro."""
+    con = abrir(tmp_path / "p.db")
+    producto_id = _con_precios(con, [500000], sku="V1")
+    con.execute(
+        "UPDATE historico_precios SET capturado_el = '2025-01-01 10:00:00'"
+        " WHERE producto_id = ?",
+        (producto_id,),
+    )
+
+    oferta = datos_del_portal(con, ventana_dias=90)["ofertas"][0]
+    assert oferta["minimo_historico"] == 500000
+
+
 def test_generar_escribe_los_dos_archivos(tmp_path):
     from herramientas.generar_portal import generar
 

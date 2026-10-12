@@ -12,8 +12,11 @@ PROHIBIDO = {
     # `from almacen.operaciones import ultima_alerta` en nucleo/frecuencia.py.
     # Sin él, esta prueba pasaría en verde ante la repetición exacta del fallo
     # que la justifica.
-    "nucleo": ("sqlite3", "requests", "almacen"),
-    "fuentes": ("sqlite3",),
+    # `portal` está aquí porque la Etapa 4 añadió una capa que LEE de `almacen`:
+    # la flecha va en un solo sentido, y nadie de abajo puede mirar hacia ella.
+    "nucleo": ("sqlite3", "requests", "almacen", "portal"),
+    "fuentes": ("sqlite3", "portal"),
+    "almacen": ("portal",),
 }
 
 

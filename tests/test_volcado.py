@@ -127,6 +127,50 @@ def test_restaurar_dos_veces_no_choca_con_las_tablas_de_la_vez_anterior(tmp_path
     assert con.execute("SELECT COUNT(*) FROM productos").fetchone()[0] == 3
 
 
+def test_volcar_una_base_vacia_no_escribe_nada(tmp_path):
+    """Un volcado hueco encima del bueno es el mismo desastre, una hora antes."""
+    sql = tmp_path / "volcado.sql"
+    bueno = _base_con_datos(tmp_path / "bueno.db", cuantos=5)
+    volcar(bueno, sql)
+    bueno.close()
+    tamaño = sql.stat().st_size
+
+    hueca = abrir(tmp_path / "hueca.db")
+    assert volcar(hueca, sql) == 0
+    hueca.close()
+    assert sql.stat().st_size == tamaño      # no lo tocó
+
+
+def test_restaurar_se_lleva_el_wal_huerfano_del_destino(tmp_path):
+    """Un `-wal` que sobrevive se reproduce encima y devuelve la base vieja."""
+    origen = _base_con_datos(tmp_path / "origen.db")
+    sql = tmp_path / "volcado.sql"
+    volcar(origen, sql)
+    origen.close()
+
+    destino = tmp_path / "destino.db"
+    huerfano = tmp_path / "destino.db-wal"
+    huerfano.write_bytes(b"restos de un proceso que murio a mitad")
+
+    assert restaurar(sql, destino) is True
+    assert not huerfano.exists()
+
+
+def test_restaurar_pasa_por_encima_de_un_intento_anterior_a_medias(tmp_path):
+    """Un proceso matado a mitad deja un `.restaurando`; el siguiente no se atasca."""
+    origen = _base_con_datos(tmp_path / "origen.db")
+    sql = tmp_path / "volcado.sql"
+    volcar(origen, sql)
+    origen.close()
+
+    destino = tmp_path / "destino.db"
+    (tmp_path / "destino.db.restaurando").write_text(
+        "basura de un intento anterior", encoding="utf-8"
+    )
+
+    assert restaurar(sql, destino) is True
+
+
 def test_un_volcado_cortado_a_mitad_no_borra_lo_que_habia(tmp_path):
     """El fallo más caro de esta etapa: un volcado trunco pisando el histórico."""
     origen = _base_con_datos(tmp_path / "origen.db", cuantos=10)

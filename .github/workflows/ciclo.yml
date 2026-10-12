@@ -22,6 +22,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # `git pull --rebase` sobre un clon superficial se rompe a veces, y
+          # el historial entero cuesta lo mismo en un repositorio de este tamaño.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -64,7 +68,10 @@ jobs:
           import sys; sys.path.insert(0, 'src')
           from almacen.conexion import abrir
           from almacen.volcado import volcar
-          print('sentencias:', volcar(abrir('data/tracker.db'), 'data/volcado.sql'))
+          sentencias = volcar(abrir('data/tracker.db'), 'data/volcado.sql')
+          print('sentencias:', sentencias)
+          if not sentencias:
+              raise SystemExit('El volcado saldria vacio o solo con el esquema: no se escribe encima del historico.')
           "
 
       - name: Commitear el volcado si cambió
@@ -106,6 +113,7 @@ jobs:
           fi
 
       - name: Guardar el portal como artefacto
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: portal
