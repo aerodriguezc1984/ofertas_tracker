@@ -115,3 +115,18 @@ def test_la_cabecera_cuenta_productos_y_tiendas(tmp_path):
     assert datos["productos"] == 2
     assert datos["tiendas"] == 2
     assert datos["generado_el"]
+
+
+def test_el_desempate_por_id_deshace_el_empate_del_mismo_segundo(tmp_path):
+    """Un ciclo real mete varias lecturas dentro del mismo segundo."""
+    con = abrir(tmp_path / "p.db")
+    producto_id = _con_precios(con, [100000, 150000, 120000, 180000], sku="T1")
+    con.execute(
+        "UPDATE historico_precios SET capturado_el = '2026-10-10 10:00:00'"
+        " WHERE producto_id = ?",
+        (producto_id,),
+    )
+
+    oferta = datos_del_portal(con)["ofertas"][0]
+    assert oferta["precio"] == 180000          # el último insertado, no el primero
+    assert oferta["precio_anterior"] == 120000
