@@ -271,7 +271,13 @@
   let ultimaSincronizacion = null;   // la última vez que los datos llegaron bien
 
   function horaDeAhora() {
-    return new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+    // `hour12: false` explícito: sin él el navegador saca «09:30 p. m.», y en
+    // Chile la hora se escribe de 0 a 23.
+    return new Date().toLocaleTimeString("es-CL", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
   }
 
   function pesos(n) {
