@@ -10,8 +10,12 @@ concurrency:
   group: ciclo
   cancel-in-progress: false
 
+# `contents` para comitear el volcado; `pages` e `id-token` para publicar el
+# portal sin pasar por un segundo repositorio ni por un token de nadie.
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   ciclo:
@@ -95,26 +99,23 @@ jobs:
       - name: Generar el portal
         run: python herramientas/generar_portal.py portal
 
-      - name: Publicar el portal
-        env:
-          TOKEN: ${{ secrets.TOKEN_PUBLICACION }}
-        run: |
-          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/aerodriguezc1984/ofertas-web.git" publicacion
-          cp portal/index.html portal/datos.json publicacion/
-          cd publicacion
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add index.html datos.json
-          if git diff --cached --quiet; then
-            echo "la foto no cambió: no se publica"
-          else
-            git commit -m "Ofertas del $(date -u '+%Y-%m-%d %H:%M UTC')"
-            git push
-          fi
-
-      - name: Guardar el portal como artefacto
-        if: always()
-        uses: actions/upload-artifact@v4
+      # El portal NO se commitea: son 270 KB de `datos.json` que cambian cada
+      # hora y caducan a la siguiente. Viaja como artefacto y lo despliega el
+      # trabajo de abajo, que es lo que hace que no haga falta un segundo
+      # repositorio ni un token para escribir en él.
+      - name: Preparar el portal para Pages
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: portal
           path: portal/
+
+  publicar:
+    needs: ciclo
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.despliegue.outputs.page_url }}
+    steps:
+      - name: Publicar el portal en Pages
+        id: despliegue
+        uses: actions/deploy-pages@v4
