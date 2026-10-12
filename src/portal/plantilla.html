@@ -156,7 +156,7 @@
   .precio-rango { display: flex; gap: .4rem; flex: 1 1 200px; }
   .precio-rango input { width: 100%; min-width: 0; }
 
-  /* --- Las tiendas, como etiquetas colgadas de su agujero --- */
+  /* --- Las tiendas, como listado --- */
 
   fieldset.tiendas-caja {
     border: 0;
@@ -171,18 +171,68 @@
     font-size: .8rem;
   }
 
-  #tiendas {
+  .cabecera-tiendas {
     display: flex;
-    flex-wrap: wrap;
-    gap: .45rem;
+    align-items: baseline;
+    gap: .5rem;
+    margin-bottom: .4rem;
+    font-size: .8rem;
+    color: var(--tinta-suave);
   }
 
-  .etiqueta-tienda {
+  #limpiar-tiendas {
+    font: inherit;
     cursor: pointer;
-    line-height: 1;
+    padding: .2rem .5rem;
+    background: var(--papel-alto);
+    color: var(--tinta);
+    border: 1px solid var(--filete);
+    border-radius: var(--radio);
   }
 
-  .etiqueta-tienda .tienda {
+  #limpiar-tiendas:disabled {
+    opacity: .45;
+    cursor: default;
+  }
+
+  #limpiar-tiendas:not(:disabled):hover {
+    background: var(--oferta);
+    border-color: var(--oferta-borde);
+    color: var(--oferta-tinta);
+  }
+
+  /* El listado en columnas: ocupa el ancho sin desparramarse, y se desplaza
+     dentro de su caja para no enterrar las ofertas. */
+  #tiendas {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 0 1.4rem;
+    max-height: 12.5rem;
+    overflow-y: auto;
+    padding: .35rem .5rem;
+    background: var(--papel-alto);
+    border: 1px solid var(--filete);
+    border-radius: var(--radio);
+  }
+
+  @media (max-width: 620px) {
+    #tiendas { max-height: 9.5rem; }
+  }
+
+  .fila-filtro {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .28rem .25rem;
+    border-bottom: 1px solid transparent;
+    cursor: pointer;
+    font-size: .85rem;
+    line-height: 1.2;
+  }
+
+  .fila-filtro:hover { border-bottom-color: var(--filete); }
+
+  .fila-filtro .tienda {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -190,67 +240,69 @@
     pointer-events: none;
   }
 
-  /* La etiqueta de verdad: papel, filete, y el troquel por donde iría el hilo. */
-  .pieza {
-    display: inline-flex;
-    align-items: center;
-    gap: .45rem;
-    padding: .34rem .6rem .34rem .5rem;
-    background: var(--papel-alto);
-    border: 1px solid var(--filete);
-    border-radius: var(--radio);
-    color: var(--tinta);
-    font-size: .85rem;
-    transition: transform .12s ease, background-color .12s ease, box-shadow .12s ease;
-  }
-
-  .pieza::before {
-    content: "";
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
+  /* La casilla dibujada: cuadrada como la de una lista de compra. */
+  .marca {
+    flex: none;
+    width: 13px;
+    height: 13px;
+    border: 1px solid var(--tinta-suave);
+    border-radius: 2px;
     background: var(--papel);
-    box-shadow: inset 0 0 0 1px var(--filete);
+    position: relative;
   }
 
-  .cuenta {
+  .tienda:checked ~ .marca {
+    background: var(--oferta);
+    border-color: var(--oferta-borde);
+  }
+
+  .tienda:checked ~ .marca::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 0;
+    width: 4px;
+    height: 8px;
+    border: solid var(--oferta-tinta);
+    border-width: 0 2px 2px 0;
+    transform: rotate(42deg);
+  }
+
+  .tienda:focus-visible ~ .marca {
+    outline: 2px solid var(--oferta-borde);
+    outline-offset: 2px;
+  }
+
+  .nombre-tienda { white-space: nowrap; }
+  .tienda:checked ~ .nombre-tienda { font-weight: 600; }
+
+  .fila-filtro .guia {
+    flex: 1;
+    min-width: .4rem;
+    border-bottom: 1px dotted var(--filete);
+  }
+
+  /* Cuánto aporta cada tienda, de un vistazo. */
+  .barra {
+    flex: none;
+    height: 6px;
+    border-radius: 1px;
+    background: var(--filete);
+  }
+
+  .tienda:checked ~ .barra { background: var(--oferta); }
+
+  .fila-filtro .cuenta {
+    flex: none;
+    min-width: 1.9rem;
+    text-align: right;
     font-family: var(--condensada);
     font-variant-numeric: tabular-nums;
     font-size: .95rem;
     color: var(--tinta-suave);
   }
 
-  .etiqueta-tienda:hover .pieza { transform: translateY(-1px); }
-
-  .tienda:checked ~ .pieza {
-    background: var(--oferta);
-    border-color: var(--oferta-borde);
-    color: var(--oferta-tinta);
-    box-shadow: 0 2px 0 var(--oferta-borde);
-  }
-
-  .tienda:checked ~ .pieza .cuenta { color: var(--oferta-tinta); }
-  .tienda:checked ~ .pieza::before { box-shadow: inset 0 0 0 1px var(--oferta-borde); }
-  .tienda:focus-visible ~ .pieza { outline: 2px solid var(--oferta-borde); outline-offset: 2px; }
-
-  /* Quitar los filtros no es una tienda: va sin troquel. */
-  button.pieza { font: inherit; font-size: .85rem; cursor: pointer; }
-  .pieza.todas { padding-left: .6rem; font-weight: 600; }
-  .pieza.todas::before { display: none; }
-
-  /* Cuarenta etiquetas en una pantalla de móvil son ocho filas antes de ver
-     una sola oferta. Se quedan en su propia caja con desplazamiento: siguen
-     todas ahí, pero no entierran lo que se viene a mirar. */
-  @media (max-width: 620px) {
-    #tiendas {
-      max-height: 7.4rem;
-      overflow-y: auto;
-      padding: .1rem .3rem .1rem .1rem;
-      border: 1px solid var(--filete);
-      border-radius: var(--radio);
-      background: var(--papel-alto);
-    }
-  }
+  .tienda:checked ~ .cuenta { color: var(--tinta); }
 
   #cuantos {
     margin: 0 0 .9rem;
@@ -403,6 +455,10 @@
 
   <fieldset class="tiendas-caja">
     <legend>Tiendas</legend>
+    <div class="cabecera-tiendas">
+      <span id="resumen-tiendas"></span>
+      <button type="button" id="limpiar-tiendas">quitar filtro</button>
+    </div>
     <div id="tiendas"></div>
   </fieldset>
 
@@ -487,9 +543,9 @@
   }
 
   function poblarTiendas() {
-    // Una etiqueta por tienda, con cuántas ofertas trae cada una. Se conserva
-    // lo que ya estaba marcado, para que el refresco automático no borre el
-    // filtro que eligió la persona que mira la página.
+    // Un listado, no un montón de etiquetas sueltas: cuarenta tiendas en línea
+    // se leen como confeti. Cada fila trae su nombre y cuántas ofertas aporta,
+    // ordenadas por aporte, que es el orden en el que interesan.
     const contenedor = document.getElementById("tiendas");
     const marcadas = new Set(
       [...contenedor.querySelectorAll(".tienda:checked")].map((c) => c.value)
@@ -498,50 +554,68 @@
 
     const cuentas = new Map();
     for (const o of ofertas) cuentas.set(o.tienda, (cuentas.get(o.tienda) || 0) + 1);
-    const distintas = [...cuentas.keys()].sort();
-
-    // Con cuarenta tiendas, desmarcarlas una a una es trabajo que la página
-    // puede ahorrarle a quien la mira.
-    const limpiar = document.createElement("button");
-    limpiar.type = "button";
-    limpiar.className = "pieza todas";
-    limpiar.textContent = `todas (${distintas.length})`;
-    limpiar.addEventListener("click", () => {
-      for (const c of contenedor.querySelectorAll(".tienda")) c.checked = false;
-      pintar();
-    });
-    contenedor.appendChild(limpiar);
+    const distintas = [...cuentas.keys()].sort(
+      (a, b) => cuentas.get(b) - cuentas.get(a) || a.localeCompare(b)
+    );
+    const mayor = Math.max(1, ...cuentas.values());
 
     for (const nombre of distintas) {
-      const etiqueta = document.createElement("label");
-      etiqueta.className = "etiqueta-tienda";
+      const fila = document.createElement("label");
+      fila.className = "fila-filtro";
 
       const casilla = document.createElement("input");
       casilla.type = "checkbox";
       casilla.className = "tienda";
       casilla.value = nombre;
       casilla.checked = marcadas.has(nombre);
-      casilla.addEventListener("change", pintar);
-      etiqueta.appendChild(casilla);
+      casilla.addEventListener("change", () => {
+        actualizarResumenTiendas();
+        pintar();
+      });
+      fila.appendChild(casilla);
 
-      // La casilla real queda oculta pero enfocable; lo que se ve y se pulsa es
-      // esta pieza, que es la etiqueta de góndola con su troquel.
-      const pieza = document.createElement("span");
-      pieza.className = "pieza";
+      // La casilla real queda oculta pero enfocable; lo que se ve es esta marca.
+      const marca = document.createElement("span");
+      marca.className = "marca";
+      fila.appendChild(marca);
 
       const texto = document.createElement("span");
+      texto.className = "nombre-tienda";
       texto.textContent = nombre;
-      pieza.appendChild(texto);
+      fila.appendChild(texto);
+
+      const guia = document.createElement("span");
+      guia.className = "guia";
+      fila.appendChild(guia);
+
+      // La barra dice de un vistazo quién aporta la mitad del catálogo.
+      const barra = document.createElement("span");
+      barra.className = "barra";
+      barra.style.width = Math.max(4, Math.round((cuentas.get(nombre) / mayor) * 34)) + "px";
+      fila.appendChild(barra);
 
       const cuenta = document.createElement("span");
       cuenta.className = "cuenta";
       cuenta.textContent = cuentas.get(nombre);
-      pieza.appendChild(cuenta);
+      fila.appendChild(cuenta);
 
-      etiqueta.appendChild(pieza);
-      contenedor.appendChild(etiqueta);
+      contenedor.appendChild(fila);
     }
+    actualizarResumenTiendas();
   }
+
+  function actualizarResumenTiendas() {
+    // Con el listado desplazado, las marcadas pueden quedar fuera de la vista:
+    // el resumen de la cabecera dice cuántas hay sin tener que buscarlas.
+    const marcadas = document.querySelectorAll(".tienda:checked").length;
+    const total = document.querySelectorAll(".tienda").length;
+    const resumen = document.getElementById("resumen-tiendas");
+    resumen.textContent = marcadas
+      ? `${marcadas} de ${total} marcadas`
+      : `las ${total}`;
+    document.getElementById("limpiar-tiendas").disabled = marcadas === 0;
+  }
+
   function agrupar(lista, criterio) {
     // Mismo artículo en varias tiendas = una tarjeta. Los que no tienen
     // identificador van sueltos: agruparlos por título sería adivinar, y este
@@ -701,6 +775,11 @@
     for (const id of ["buscar", "descuento", "precio-min", "precio-max", "orden"]) {
       document.getElementById(id).addEventListener("input", pintar);
     }
+    document.getElementById("limpiar-tiendas").addEventListener("click", () => {
+      for (const c of document.querySelectorAll(".tienda")) c.checked = false;
+      actualizarResumenTiendas();
+      pintar();
+    });
     cargar();
     setInterval(cargar, MEDIA_HORA);
   });
