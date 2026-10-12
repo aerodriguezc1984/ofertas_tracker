@@ -166,3 +166,23 @@ def test_la_pagina_no_pinta_datos_con_innerhtml():
     página. La plantilla usa `textContent` y esta prueba lo fija."""
     plantilla = Path(__file__).parent.parent / "src" / "portal" / "plantilla.html"
     assert "innerHTML" not in plantilla.read_text(encoding="utf-8")
+
+
+def test_la_pagina_avisa_cuando_no_puede_cargar_los_datos():
+    """Un fetch que falla no puede dejar un «Cargando…» eterno."""
+    plantilla = (Path(__file__).parent.parent / "src" / "portal" / "plantilla.html").read_text(
+        encoding="utf-8"
+    )
+    assert "catch (error)" in plantilla
+    assert "No se pudieron cargar los datos" in plantilla
+    assert "Sin conexión con los datos" in plantilla
+
+
+def test_la_pagina_no_enlaza_una_url_que_no_sea_http():
+    """La URL la escribe la tienda; el esquema hay que mirarlo a mano."""
+    plantilla = (Path(__file__).parent.parent / "src" / "portal" / "plantilla.html").read_text(
+        encoding="utf-8"
+    )
+    assert "function urlSegura" in plantilla
+    assert "enlace.href = destino;" in plantilla
+    assert "enlace.href = mejor.url" not in plantilla

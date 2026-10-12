@@ -62,6 +62,11 @@
     font-size: .85rem;
   }
 
+  #sincronizacion.falla {
+    color: var(--acento);
+    font-weight: 600;
+  }
+
   .panel {
     max-width: 1100px;
     margin: 0 auto;
@@ -263,6 +268,11 @@
   const MEDIA_HORA = 30 * 60 * 1000;
 
   let ofertas = [];
+  let ultimaSincronizacion = null;   // la última vez que los datos llegaron bien
+
+  function horaDeAhora() {
+    return new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+  }
 
   function pesos(n) {
     // 887990 -> "$887.990", como se escribe en Chile.
@@ -276,14 +286,43 @@
     return `${d}/${m}`;
   }
 
+  function urlSegura(url) {
+    // La URL la escribe la tienda. Un `javascript:` en un `href` se ejecuta al
+    // pulsar, y esta página es pública. El título lo protege `textContent`; la
+    // URL hay que mirarla a mano.
+    return /^https?:\/\//i.test(String(url || "")) ? url : null;
+  }
+
+  function plano(texto) {
+    // Buscar "cafe" tiene que encontrar "Café": las tildes las ponen las
+    // tiendas en sus títulos, no quien busca.
+    return String(texto).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  }
+
   async function cargar() {
-    const r = await fetch(ORIGEN + "?t=" + Date.now()); // sin caché del navegador
-    const datos = await r.json();
-    ofertas = datos.ofertas;
-    document.getElementById("sincronizacion").textContent =
-      `${datos.productos} productos de ${datos.tiendas} tiendas · datos del ${datos.generado_el} UTC`;
-    poblarTiendas();
-    pintar();
+    const aviso = document.getElementById("sincronizacion");
+    try {
+      const r = await fetch(ORIGEN + "?t=" + Date.now()); // sin caché del navegador
+      if (!r.ok) throw new Error("respuesta " + r.status);
+      const datos = await r.json();
+      ofertas = datos.ofertas;
+      ultimaSincronizacion = horaDeAhora();
+      aviso.classList.remove("falla");
+      aviso.textContent =
+        `${datos.productos} productos de ${datos.tiendas} tiendas · datos del ` +
+        `${datos.generado_el} UTC · última sincronización: ${ultimaSincronizacion}`;
+      poblarTiendas();
+      pintar();
+    } catch (error) {
+      // Un fallo de red no puede dejar la página muda. Si ya hubo datos alguna
+      // vez, se quedan en pantalla y se avisa de que son viejos; si nunca
+      // llegaron, se dice por qué no hay nada que mirar en vez de dejar un
+      // «Cargando…» eterno.
+      aviso.classList.add("falla");
+      aviso.textContent = ultimaSincronizacion
+        ? `Sin conexión con los datos. Lo que ves es de las ${ultimaSincronizacion}.`
+        : "No se pudieron cargar los datos. Se reintenta solo en 30 minutos.";
+    }
   }
 
   function poblarTiendas() {
@@ -339,12 +378,18 @@
     art.className = "tarjeta" + (mejor.disponible ? "" : " agotado");
 
     const h = document.createElement("h2");
-    const enlace = document.createElement("a");
-    enlace.href = mejor.url;
-    enlace.target = "_blank";
-    enlace.rel = "noopener noreferrer";
-    enlace.textContent = mejor.titulo;
-    h.appendChild(enlace);
+    const destino = urlSegura(mejor.url);
+    if (destino) {
+      const enlace = document.createElement("a");
+      enlace.href = destino;
+      enlace.target = "_blank";
+      enlace.rel = "noopener noreferrer";
+      enlace.textContent = mejor.titulo;
+      h.appendChild(enlace);
+    } else {
+      // Sin enlace, pero con título: la oferta sigue siendo información útil.
+      h.textContent = mejor.titulo;
+    }
     art.appendChild(h);
 
     if (mejor.descuento_pct > 0) {
@@ -373,7 +418,7 @@
   }
 
   function pintar() {
-    const texto = document.getElementById("buscar").value.trim().toLowerCase();
+    const texto = plano(document.getElementById("buscar").value.trim());
     const minDesc = Number(document.getElementById("descuento").value);
     const minPrecio = Number(document.getElementById("precio-min").value) || 0;
     const maxPrecio = Number(document.getElementById("precio-max").value) || Infinity;
@@ -381,7 +426,7 @@
 
     let visibles = ofertas.filter(
       (o) =>
-        (!texto || o.titulo.toLowerCase().includes(texto)) &&
+        (!texto || plano(o.titulo).includes(texto)) &&
         o.descuento_pct >= minDesc &&
         o.precio >= minPrecio &&
         o.precio <= maxPrecio &&
