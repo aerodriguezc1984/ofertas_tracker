@@ -164,8 +164,13 @@ def test_el_json_generado_es_valido_y_trae_las_ofertas(tmp_path):
 def test_la_pagina_no_pinta_datos_con_innerhtml():
     """Los títulos vienen de las tiendas: con `innerHTML` uno con `<` rompe la
     página. La plantilla usa `textContent` y esta prueba lo fija."""
-    plantilla = Path(__file__).parent.parent / "src" / "portal" / "plantilla.html"
-    assert "innerHTML" not in plantilla.read_text(encoding="utf-8")
+    plantilla = (Path(__file__).parent.parent / "src" / "portal" / "plantilla.html").read_text(
+        encoding="utf-8"
+    )
+    assert "innerHTML" not in plantilla
+    # `innerHTML` no es la única puerta: estas pintan marcado igual de bien.
+    for puerta in ("insertAdjacentHTML", "outerHTML", "document.write", "new Function"):
+        assert puerta not in plantilla
 
 
 def test_la_pagina_avisa_cuando_no_puede_cargar_los_datos():
@@ -186,3 +191,25 @@ def test_la_pagina_no_enlaza_una_url_que_no_sea_http():
     assert "function urlSegura" in plantilla
     assert "enlace.href = destino;" in plantilla
     assert "enlace.href = mejor.url" not in plantilla
+    # El nombre de la función no protege nada: lo que protege es este filtro.
+    assert r"/^https?:\/\//i.test(" in plantilla
+
+
+def test_las_claves_de_una_oferta_son_las_que_espera_la_pagina(tmp_path):
+    """Renombrar una clave en Python deja la página sin insignias y todo verde."""
+    con = abrir(tmp_path / "p.db")
+    _con_precios(con, [887990, 349990], sku="K1")
+
+    oferta = datos_del_portal(con)["ofertas"][0]
+    assert set(oferta) == {
+        "articulo", "tienda", "titulo", "url", "imagen", "disponible",
+        "precio", "fecha", "precio_anterior", "fecha_anterior",
+        "descuento_pct", "minimo_historico",
+    }
+    # `src/portal/plantilla.html` lee estas claves por su nombre y nada más las
+    # ata: si cambias una aquí, cámbiala allí.
+    plantilla = (Path(__file__).parent.parent / "src" / "portal" / "plantilla.html").read_text(
+        encoding="utf-8"
+    )
+    for clave in ("descuento_pct", "precio_anterior", "fecha_anterior", "disponible"):
+        assert clave in plantilla

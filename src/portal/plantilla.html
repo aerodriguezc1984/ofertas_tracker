@@ -286,10 +286,15 @@
   }
 
   function dia(marca) {
-    // "2026-10-09 18:20" -> "09/10"
+    // "2026-10-09 18:20" viene en UTC: la base guarda `datetime('now')`. Cortar
+    // los diez primeros caracteres enseñaría el día equivocado para todo lo
+    // capturado después de las 21:00 de Chile. Se convierte a la hora del
+    // navegador, que es donde está quien mira.
     if (!marca) return "";
-    const [a, m, d] = marca.slice(0, 10).split("-");
-    return `${d}/${m}`;
+    const f = new Date(marca.replace(" ", "T") + "Z");
+    const dd = String(f.getDate()).padStart(2, "0");
+    const mm = String(f.getMonth() + 1).padStart(2, "0");
+    return `${dd}/${mm}`;
   }
 
   function urlSegura(url) {
@@ -362,7 +367,7 @@
     }
   }
 
-  function agrupar(lista) {
+  function agrupar(lista, criterio) {
     // Mismo artículo en varias tiendas = una tarjeta. Los que no tienen
     // identificador van sueltos: agruparlos por título sería adivinar, y este
     // proyecto no empareja por parecido.
@@ -372,8 +377,17 @@
       if (!grupos.has(clave)) grupos.set(clave, []);
       grupos.get(clave).push(o);
     }
-    for (const filas of grupos.values()) filas.sort((a, b) => a.precio - b.precio);
+    // Dentro de la tarjeta manda la primera fila: da el título, el enlace y la
+    // insignia. Tiene que ser la que puso al grupo donde está, o la tarjeta de
+    // arriba del todo en «Mayor descuento» saldría sin descuento ninguno.
+    for (const filas of grupos.values()) filas.sort(criterio);
     return [...grupos.values()];
+  }
+
+  function hayStock(filas) {
+    // Un artículo está disponible si lo está en alguna tienda, no solo en la
+    // fila que encabeza la tarjeta.
+    return filas.some((f) => f.disponible);
   }
 
   function tarjeta(filas) {
@@ -381,7 +395,7 @@
     // títulos vienen de las tiendas y traen comillas, `&` y signos de menor que.
     const mejor = filas[0];
     const art = document.createElement("article");
-    art.className = "tarjeta" + (mejor.disponible ? "" : " agotado");
+    art.className = "tarjeta" + (hayStock(filas) ? "" : " agotado");
 
     const h = document.createElement("h2");
     const destino = urlSegura(mejor.url);
@@ -448,13 +462,14 @@
     visibles.sort(criterios[orden]);
 
     // Los agotados, al final, pase lo que pase con el orden elegido.
-    const grupos = agrupar(visibles).sort(
-      (a, b) => Number(b[0].disponible) - Number(a[0].disponible)
+    const grupos = agrupar(visibles, criterios[orden]).sort(
+      (a, b) => Number(hayStock(b)) - Number(hayStock(a))
     );
 
     const destino = document.getElementById("resultados");
     destino.replaceChildren(...grupos.map(tarjeta));
-    document.getElementById("cuantos").textContent = `${visibles.length} ofertas`;
+    document.getElementById("cuantos").textContent =
+      `${visibles.length} ofertas en ${grupos.length} artículos`;
   }
 
   document.addEventListener("DOMContentLoaded", () => {
