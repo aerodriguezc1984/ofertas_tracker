@@ -38,6 +38,9 @@ def restaurar(ruta_sql: Path | str, ruta_db: Path | str) -> bool:
     resultado de un ciclo que falló a mitad, y escribirlo encima borraría el
     histórico: perder una hora de capturas es recuperable, perder la base
     entera no.
+
+    Tampoco restaura un volcado cortado a mitad: se construye en un archivo
+    aparte y solo se mueve encima del destino si el script entero se ejecutó.
     """
     ruta_sql, ruta_db = Path(ruta_sql), Path(ruta_db)
     if not ruta_sql.exists():
@@ -48,12 +51,28 @@ def restaurar(ruta_sql: Path | str, ruta_db: Path | str) -> bool:
         return False
 
     ruta_db.parent.mkdir(parents=True, exist_ok=True)
-    if ruta_db.exists():
-        ruta_db.unlink()
 
-    con = sqlite3.connect(ruta_db, isolation_level=None)
+    # Se construye aparte y solo se mueve encima si el script terminó entero. Un
+    # volcado cortado a mitad de escritura pasa la guarda de arriba sin problema
+    # —con datos reales sobra el umbral mucho antes del corte—, así que lo único
+    # que impide que se lleve por delante el histórico es no haberlo tocado
+    # todavía cuando `executescript` revienta.
+    a_medias = ruta_db.with_name(ruta_db.name + ".restaurando")
+    a_medias.unlink(missing_ok=True)
+
+    con = sqlite3.connect(a_medias, isolation_level=None)
     try:
         con.executescript(sql)
+    except sqlite3.DatabaseError:
+        entero = False
+    else:
+        entero = True
     finally:
         con.close()
+
+    if not entero:
+        a_medias.unlink(missing_ok=True)
+        return False
+
+    a_medias.replace(ruta_db)
     return True

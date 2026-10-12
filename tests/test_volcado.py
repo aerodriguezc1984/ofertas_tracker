@@ -39,16 +39,32 @@ def test_volcar_y_restaurar_devuelve_la_misma_base(tmp_path):
 
 
 def test_el_volcado_conserva_los_titulos_con_comillas(tmp_path):
-    """Review Focus 5: los títulos reales llevan comillas dentro."""
-    origen = _base_con_datos(tmp_path / "origen.db", cuantos=1)
+    """Review Focus 5: los títulos reales llevan comillas dentro.
+
+    El carácter que importa es el apóstrofo —delimita los literales SQL que
+    genera `iterdump`—, no la comilla doble, que ahí dentro no es especial.
+    10 de 599 títulos reales lo llevan como marca de pulgadas.
+    """
+    titulo_con_comillas = 'Notebook 16\'\' WUXGA "Edición Especial"'
+    con = abrir(tmp_path / "origen.db")
+    unica = Captura(
+        tienda="paris",
+        sku_externo="S1",
+        titulo=titulo_con_comillas,
+        url="https://www.paris.cl/n-S1.html",
+        precio_internet=100000,
+    )
+    producto_id = alta_o_actualiza_producto(con, unica)
+    registrar_si_cambio(con, producto_id, unica)
+
     sql = tmp_path / "volcado.sql"
-    volcar(origen, sql)
+    volcar(con, sql)
     restaurar(sql, tmp_path / "destino.db")
 
     titulo = abrir(tmp_path / "destino.db").execute(
         "SELECT titulo FROM productos"
     ).fetchone()[0]
-    assert titulo == 'Notebook 15,6" Full HD'
+    assert titulo == titulo_con_comillas
 
 
 # --- Review Focus 1: el fallo más caro de esta etapa ---
@@ -109,3 +125,23 @@ def test_restaurar_dos_veces_no_choca_con_las_tablas_de_la_vez_anterior(tmp_path
 
     con = abrir(destino)
     assert con.execute("SELECT COUNT(*) FROM productos").fetchone()[0] == 3
+
+
+def test_un_volcado_cortado_a_mitad_no_borra_lo_que_habia(tmp_path):
+    """El fallo más caro de esta etapa: un volcado trunco pisando el histórico."""
+    origen = _base_con_datos(tmp_path / "origen.db", cuantos=10)
+    sql = tmp_path / "volcado.sql"
+    volcar(origen, sql)
+    origen.close()
+
+    entero = sql.read_text(encoding="utf-8")
+    sql.write_text(entero[: len(entero) // 2], encoding="utf-8")
+
+    ruta_destino = tmp_path / "destino.db"
+    destino = _base_con_datos(ruta_destino, cuantos=5)
+    destino.close()
+
+    assert restaurar(sql, ruta_destino) is False
+    sobrevivio = abrir(ruta_destino)
+    assert sobrevivio.execute("SELECT COUNT(*) FROM productos").fetchone()[0] == 5
+    sobrevivio.close()
