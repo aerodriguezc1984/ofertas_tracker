@@ -1108,6 +1108,19 @@ Si llega una alerta a Telegram, mejor: es la prueba de que los secretos están b
 
 # Tarea 5: El portal publicado
 
+> **SUPERADA el 2026-10-13. No sigas los pasos de abajo.** Esta tarea montaba el portal en un
+> segundo repositorio público (`ofertas-web`) al que el flujo escribía con un `TOKEN_PUBLICACION`
+> metido en la URL de un `git clone`. Ese reparto existía por una sola razón —Pages gratis solo
+> vive en repositorios públicos, y el del motor iba a ser privado—. Al quedar público el del
+> motor, la razón desapareció: hoy el portal lo despliega el propio flujo con
+> `actions/deploy-pages`, y ni el segundo repositorio ni el token existen. El repositorio
+> `ofertas-web` está borrado y el secreto, revocado.
+>
+> Se deja escrito en vez de borrarlo porque explica por qué el flujo tuvo esa forma durante un día,
+> y porque la cuenta que hay detrás sigue viva: **privado y cada hora no cabe en los 2.000 minutos
+> gratuitos de Actions**. El día que el histórico tenga que dejar de ser público, la cadencia baja
+> a tres horas en el mismo movimiento.
+
 **Archivos:**
 - Modificar: `.github/workflows/ciclo.yml`
 
