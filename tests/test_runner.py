@@ -133,9 +133,15 @@ def test_una_captura_que_falla_no_tumba_el_resto(tmp_path):
     avisos = NotificadorFalso()
 
     buena = captura(sku="S1")
+    # Rompe por el título nulo, no por la url. Compartir url dejó de ser un
+    # error el 2026-11-26: la identidad es (tienda, sku_externo) y hay tiendas
+    # que publican varios SKU sobre una misma ficha. Lo que esta prueba mide
+    # —que una captura rechazada no tumbe el ciclo— no ha cambiado; solo hacía
+    # falta una forma de romper que siga siendo un fallo de verdad.
     rota = Captura(
-        tienda="paris", sku_externo="S2", titulo="Rota",
-        url=buena.url,  # misma URL que S1: viola el UNIQUE de productos.url
+        tienda="paris", sku_externo="S2",
+        titulo=None,  # viola el NOT NULL de productos.titulo
+        url="https://www.paris.cl/notebook-roto.html",
         precio_internet=50000,
     )
 

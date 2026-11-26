@@ -14,7 +14,13 @@ CREATE TABLE IF NOT EXISTS productos (
     ean             TEXT,
     producto_solotodo INTEGER,
     titulo          TEXT    NOT NULL,
-    url             TEXT    NOT NULL UNIQUE,
+    -- Sin UNIQUE a propósito: la identidad del producto es (tienda,
+    -- sku_externo), no la url. Entel publica varias entidades —variantes de
+    -- color o capacidad, cada una con su SKU y su precio— sobre una misma
+    -- ficha. Con `url` única, la segunda y siguientes reventaban el upsert
+    -- de `alta_o_actualiza_producto`, que solo resuelve el choque de
+    -- (tienda, sku_externo), y se perdían 11 productos por ciclo.
+    url             TEXT    NOT NULL,
     imagen_url      TEXT,
     creado_el       TEXT    NOT NULL DEFAULT (datetime('now')),
     ultima_revision TEXT,

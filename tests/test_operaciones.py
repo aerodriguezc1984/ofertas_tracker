@@ -283,3 +283,22 @@ def test_la_alerta_del_articulo_distingue_la_regla(tmp_path):
     registrar_alerta(con, uno, "precio_maximo", 349990)
 
     assert ultima_alerta_de_articulo(con, 269594, "mejor_precio") is None
+
+
+def test_dos_skus_de_la_misma_tienda_pueden_compartir_url(tmp_path):
+    """La identidad es (tienda, sku_externo), no la url.
+
+    Entel publica varias entidades —variantes de color o capacidad— sobre una
+    misma ficha de producto. Son dos productos vigilados, cada uno con su
+    precio, no un choque que haya que descartar.
+    """
+    con = abrir(tmp_path / "p.db")
+    ficha = "https://miportal.entel.cl/personas/producto/prod1910048"
+    una = replace(captura(sku="PO_B_13928"), url=ficha)
+    otra = replace(captura(sku="PO_B_13532"), url=ficha)
+
+    primero = alta_o_actualiza_producto(con, una)
+    segundo = alta_o_actualiza_producto(con, otra)
+
+    assert primero != segundo
+    assert con.execute("SELECT COUNT(*) FROM productos").fetchone()[0] == 2
